@@ -36,9 +36,14 @@
 #define STM32L552_PERIPH_BASE_S  0x50000000u
 #define STM32L552_PERIPH_BASE_NS 0x40000000u
 
-#define STM32L552_RAM_REGIONS 0
-#define STM32L552_RAM_REGION_COUNT 0u
-#define STM32L552_MPCBB_BLOCK_SIZE 0u
+/* GTZC MPCBB1 governs SRAM1 and MPCBB2 SRAM2, in 256-byte blocks (RM0438). */
+static const struct mm_ram_region STM32L552_RAM_REGIONS[] = {
+    { 0x30000000u, 0x20000000u, 0x00030000u, 0, 0u }, /* SRAM1 192 KB */
+    { 0x30030000u, 0x20030000u, 0x00010000u, 1, 0u }  /* SRAM2 64 KB */
+};
+
+#define STM32L552_RAM_REGION_COUNT (sizeof(STM32L552_RAM_REGIONS) / sizeof(STM32L552_RAM_REGIONS[0]))
+#define STM32L552_MPCBB_BLOCK_SIZE 256u
 
 #define STM32L552_SOC_RESET      mm_stm32l552_mmio_reset
 #define STM32L552_SOC_REGISTER   mm_stm32l552_register_mmio
@@ -55,6 +60,7 @@
 #define STM32L552_TIMER_INIT  mm_stm32l552_timers_init
 #define STM32L552_TIMER_RESET mm_stm32l552_timers_reset
 #define STM32L552_TIMER_TICK  mm_stm32l552_timers_tick
+#define STM32L552_TZ_ATTR     mm_stm32l552_tz_attr_for_addr
 
 #define STM32L552_FLAGS (MM_TARGET_FLAG_NVM_WRITEONCE | MM_TARGET_FLAG_FPU | MM_TARGET_FLAG_DUALBANK)
 
