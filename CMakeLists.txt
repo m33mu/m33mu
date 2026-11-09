@@ -677,6 +677,7 @@ add_custom_target(firmware-build
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32h563-wolfssl-iotsafe app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32u585 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32l552 app.bin
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32l552-tz app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxw app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxn947 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-nrf5340 app.bin
@@ -799,6 +800,9 @@ add_custom_target(test-firmware
           --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
   COMMAND $<TARGET_FILE:m33mu> --cpu rp2350 tests/firmware/test-rp2350-pio/app.bin
           --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  # Takes SecureFaults on purpose, so no --quit-on-faults.
+  COMMAND $<TARGET_FILE:m33mu> --cpu stm32l552 tests/firmware/test-stm32l552-tz/app.bin
+          --expect-bkpt 0x7f --timeout 60 --uart-stdout
   DEPENDS m33mu firmware-build
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )

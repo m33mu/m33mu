@@ -1,0 +1,24 @@
+CC=arm-none-eabi-gcc
+OBJCOPY ?= arm-none-eabi-objcopy
+
+CFLAGS := -mcpu=cortex-m33 -mthumb -mcmse -Os -ffreestanding -fdata-sections -ffunction-sections -g -ggdb -Wall -Wextra
+LDFLAGS := -nostdlib -nostartfiles -T target.ld -Wl,-gc-sections
+
+SRCS := main.c
+OBJS := $(SRCS:.c=.o)
+
+all: app.bin
+
+app.elf: $(OBJS) target.ld
+	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -lgcc -o $@
+
+app.bin: app.elf
+	$(OBJCOPY) -O binary $< $@
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+clean:
+	rm -f $(OBJS) app.elf app.bin
+
+.PHONY: all clean

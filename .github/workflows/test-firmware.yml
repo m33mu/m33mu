@@ -62,6 +62,9 @@ jobs:
         run: build/m33mu  tests/firmware/test-stm32u585/app.bin --spiflash:SPI1:file=/tmp/flash.bin:size=4096:mmap=0x60000000:cs=PB0 --tpm:SPI1:cs=PB1 --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu stm32u585 --quit-on-faults
       - name: Run STM32L5 firmware test (SPI peripherals selection)
         run: build/m33mu  tests/firmware/test-stm32l552/app.bin --spiflash:SPI1:file=/tmp/flash.bin:size=4096:mmap=0x60000000:cs=PB0 --tpm:SPI1:cs=PB1 --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu stm32l552 --quit-on-faults
+      - name: Run STM32L5 TrustZone isolation firmware test
+        # Takes SecureFaults on purpose, so no --quit-on-faults.
+        run: build/m33mu tests/firmware/test-stm32l552-tz/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu stm32l552
       - name: Run nRF5340 firmware test (SPI flash read/write)
         run: build/m33mu  tests/firmware/test-nrf5340/app.bin --spiflash:SPI0:file=/tmp/flash.bin:size=4096:mmap=0x60000000:cs=PB0 --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu nrf5340 --quit-on-faults
       - name: Run nRF54LM20 firmware test
