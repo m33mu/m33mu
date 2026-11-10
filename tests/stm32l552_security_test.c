@@ -379,6 +379,28 @@ static int test_tzsc_rng(void)
     return 0;
 }
 
+static int test_flash_sr_write_one_to_clear(void)
+{
+    struct l5_rig *r = &g_rig;
+
+    if (rig_init(r, MM_TRUE)) return 1;
+    /* RM0438: writing 1 to an SECSR flag clears it, never sets it. */
+    CHECK(wr(r, MM_SECURE, FLASH_REG_S + 0x24u, 0x000020FBu));
+    CHECK((rd(r, MM_SECURE, FLASH_REG_S + 0x24u) & 0x000020FBu) == 0u);
+    /* A Secure page erase through SECCR ends with EOP, cleared by writing 1. */
+    CHECK(wr(r, MM_SECURE, FLASH_REG_S + 0x0Cu, 0x45670123u));
+    CHECK(wr(r, MM_SECURE, FLASH_REG_S + 0x0Cu, 0xCDEF89ABu));
+    CHECK(wr(r, MM_SECURE, FLASH_REG_S + 0x2Cu, (120u << 3) | (1u << 1)));
+    CHECK(wr(r, MM_SECURE, FLASH_REG_S + 0x2Cu,
+             (120u << 3) | (1u << 1) | (1u << 16)));
+    CHECK((rd(r, MM_SECURE, FLASH_REG_S + 0x24u) & 0x000000FAu) == 0u);
+    CHECK((rd(r, MM_SECURE, FLASH_REG_S + 0x24u) & 1u) == 1u);
+    CHECK(rd(r, MM_SECURE, 0x0C03C000u) == 0xFFFFFFFFu);
+    CHECK(wr(r, MM_SECURE, FLASH_REG_S + 0x24u, 1u));
+    CHECK((rd(r, MM_SECURE, FLASH_REG_S + 0x24u) & 1u) == 0u);
+    return 0;
+}
+
 int main(void)
 {
     int failures = 0;
@@ -395,6 +417,7 @@ int main(void)
     failures += test_mpcbb_enforced();
     failures += test_mpcbb_locks();
     failures += test_flash_secwm_secbb();
+    failures += test_flash_sr_write_one_to_clear();
     failures += test_tzsc_rng();
     if (failures != 0) {
         printf("stm32l552_security_test: %d failure(s)\n", failures);

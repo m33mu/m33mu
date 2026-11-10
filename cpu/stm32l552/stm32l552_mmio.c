@@ -311,6 +311,7 @@ extern void mm_system_request_reset(void);
 
 #define FLASH_FLAG_EOP    (1u << 0)
 #define FLASH_FLAG_PGSERR (1u << 7)
+#define FLASH_SR_W1C_MASK 0x000020FBu
 #define FLASH_FLAG_BSY    (1u << 16)
 
 #define FLASH_CR_PG        (1u << 0)
@@ -1885,6 +1886,12 @@ static mm_bool flash_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u3
         g_secwm_r2[0] = f->regs[FLASH_SECWM1R2 / 4u];
         g_secwm_r1[1] = f->regs[FLASH_SECWM2R1 / 4u];
         g_secwm_r2[1] = f->regs[FLASH_SECWM2R2 / 4u];
+        return MM_TRUE;
+    }
+
+    /* RM0438: NSSR/SECSR status flags are write-1-to-clear; BSY is read-only. */
+    if (offset == FLASH_NSSR || offset == FLASH_SECSR) {
+        f->regs[offset / 4u] &= ~(value & FLASH_SR_W1C_MASK);
         return MM_TRUE;
     }
 
