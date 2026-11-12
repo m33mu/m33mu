@@ -132,6 +132,17 @@ extern void mm_system_request_reset(void);
 #define SPU_BASE_S  0x50003000u
 #define SPU_SIZE    0x1000u
 
+/* FICR: factory information, read-only, code region (no S/NS alias) */
+#define FICR_BASE       0x00FF0000u
+#define FICR_SIZE       0x1000u
+#define FICR_INFO_PART  0x20Cu
+#define FICR_INFO_VARIANT 0x210u
+#define FICR_INFO_RAM   0x218u
+#define FICR_INFO_FLASH 0x21Cu
+#define FICR_INFO_CODEPAGESIZE 0x220u
+#define FICR_INFO_CODESIZE 0x224u
+#define FICR_TRNG90B    0xC00u
+
 /* CryptoCell-312: secure-only, no NS alias */
 #define CC312_CTRL_BASE_S   0x50844000u
 #define CC312_CTRL_SIZE     0x1000u
@@ -194,6 +205,7 @@ static struct nrf_gpio_bank gpio_banks[2];
 static struct nvmc_state nvmc_state;
 static struct rng_state rng_state;
 static struct spu_state spu_state;
+static mm_u32 ficr_regs[FICR_SIZE / 4];
 static struct mm_nrf5340_cryptocell *cc312_state;
 
 static mm_bool qspi_trace_enabled(void)
@@ -773,6 +785,8 @@ static mm_u32 nrf_gpio_bank_read_seccfgr(void *opaque, int bank)
     return 0u;
 }
 
+static void nvmc_erase_page(struct nvmc_state *nvmc, mm_u32 addr);
+
 static mm_bool nvmc_write_cb(void *opaque,
                              enum mm_sec_state sec,
                              mm_u32 addr,
@@ -780,16 +794,32 @@ static mm_bool nvmc_write_cb(void *opaque,
                              mm_u32 value)
 {
     struct nvmc_state *nvmc = (struct nvmc_state *)opaque;
+    mm_bool target_secure;
     mm_u32 wen;
     mm_u32 base;
     mm_u32 offset;
     mm_u8 *flash;
     if (nvmc == 0 || nvmc->flash == 0) return MM_FALSE;
-    (void)sec;
 
-    wen = nvmc->regs[NVMC_CONFIG / 4] & 0x7u;
-    if (wen == 0u) {
+    /* CONFIG governs the Secure flash view, CONFIGNS the Non-secure one;
+     * Non-secure code never reaches the Secure view. */
+    target_secure = (addr >= nvmc->base_s) ? MM_TRUE : MM_FALSE;
+    if (target_secure && sec != MM_SECURE) {
+        return MM_FALSE;
+    }
+    if (target_secure) {
+        wen = nvmc->regs[NVMC_CONFIG / 4] & 0x7u;
+    } else {
         wen = nvmc->regs[NVMC_CONFIGNS / 4] & 0x3u;
+    }
+    /* nRF53 has no ERASEPAGE: with WEN=Een, writing 0xFFFFFFFF to the first
+     * word of a page erases that page. */
+    if (wen == 0x2u) {
+        if (size_bytes != 4u || value != 0xFFFFFFFFu || (addr & 0xFFFu) != 0u) {
+            return MM_FALSE;
+        }
+        nvmc_erase_page(nvmc, addr);
+        return MM_TRUE;
     }
     if (wen != 0x1u) {
         return MM_FALSE;
@@ -858,6 +888,26 @@ static void nvmc_erase_page(struct nvmc_state *nvmc, mm_u32 addr)
                                page_base,
                                page_size);
     }
+}
+
+static mm_bool ficr_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 *value_out)
+{
+    (void)opaque;
+    /* FICR is always Secure (SPU): Non-secure reads fault. */
+    if (mmio_active_sec() != MM_SECURE) return MM_FALSE;
+    if (value_out == 0 || size_bytes == 0 || size_bytes > 4) return MM_FALSE;
+    if ((offset + size_bytes) > FICR_SIZE) return MM_FALSE;
+    *value_out = read_slice(ficr_regs[offset / 4], offset & 3u, size_bytes);
+    return MM_TRUE;
+}
+
+static mm_bool ficr_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 value)
+{
+    (void)opaque;
+    (void)offset;
+    (void)size_bytes;
+    (void)value;
+    return MM_FALSE;
 }
 
 static mm_bool nvmc_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 *value_out)
@@ -1079,6 +1129,13 @@ mm_bool mm_nrf5340_register_mmio(struct mmio_bus *bus)
     reg.base = NVMC_BASE_S;
     if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
 
+    reg.base = FICR_BASE;
+    reg.size = FICR_SIZE;
+    reg.opaque = 0;
+    reg.read = ficr_read;
+    reg.write = ficr_write;
+    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+
     /* Note: RNG_BASE_NS/S (0x40845000/0x50845000) is the CC-312 engine base.
      * The real nRF5340 does not have a standalone RNG at this address —
      * random generation is provided by CC_RNG inside the CryptoCell block.
@@ -1191,6 +1248,25 @@ void mm_nrf5340_mmio_reset(void)
     nvmc_state.regs[NVMC_CONFIG / 4] = 0u;
 
     mm_gpio_set_external_input_writer(nrf_gpio_set_external_input_cb, 0);
+
+    /* Unprogrammed FICR words read as erased flash. TRNG90B values are the
+     * CC312 ring-oscillator sample counts the CryptoCell TRNG setup loads. */
+    memset(ficr_regs, 0xFF, sizeof(ficr_regs));
+    ficr_regs[FICR_INFO_PART / 4] = 0x00005340u;
+    ficr_regs[FICR_INFO_VARIANT / 4] = 0x514B4141u; /* "QKAA" */
+    ficr_regs[FICR_INFO_RAM / 4] = 0x00000200u;
+    ficr_regs[FICR_INFO_FLASH / 4] = 0x00000400u;
+    ficr_regs[FICR_INFO_CODEPAGESIZE / 4] = 0x00001000u;
+    ficr_regs[FICR_INFO_CODESIZE / 4] = 0x00000100u;
+    ficr_regs[(FICR_TRNG90B + 0x00u) / 4] = 0x00000210u; /* BYTES */
+    ficr_regs[(FICR_TRNG90B + 0x04u) / 4] = 0x00000014u; /* RCCUTOFF */
+    ficr_regs[(FICR_TRNG90B + 0x08u) / 4] = 0x00000196u; /* APCUTOFF */
+    ficr_regs[(FICR_TRNG90B + 0x0Cu) / 4] = 0x00000000u; /* STARTUP */
+    ficr_regs[(FICR_TRNG90B + 0x10u) / 4] = 0x00000FA0u; /* ROSC1 */
+    ficr_regs[(FICR_TRNG90B + 0x14u) / 4] = 0x00000FA0u; /* ROSC2 */
+    ficr_regs[(FICR_TRNG90B + 0x18u) / 4] = 0x00000FA0u; /* ROSC3 */
+    ficr_regs[(FICR_TRNG90B + 0x1Cu) / 4] = 0x00000FA0u; /* ROSC4 */
+
     mm_gpio_set_bank_info_reader(nrf5340_gpio_bank_info, 0);
     mm_rcc_set_clock_list_reader(nrf5340_rcc_clock_list_line, 0);
     mm_nrf5340_wdt_reset();

@@ -5587,6 +5587,8 @@ int main(int argc, char **argv)
                                    MM_PROT_PERM_READ | MM_PROT_PERM_WRITE | MM_PROT_PERM_EXEC, MM_SECURE);
                 mm_prot_add_region(&execution.protection[0], 0x00000000u, execution.target.flash_size_ns,
                                    MM_PROT_PERM_READ | MM_PROT_PERM_WRITE | MM_PROT_PERM_EXEC, MM_NONSECURE);
+                /* FICR, Secure read-only */
+                mm_prot_add_region(&execution.protection[0], 0x00FF0000u, 0x00001000u, MM_PROT_PERM_READ, MM_SECURE);
             }
             if (cpu_name != 0 && strcmp(cpu_name, "imxrt700") == 0) {
                 add_imxrt700_prot_regions(&execution.protection[0], &execution.target);
@@ -5638,6 +5640,7 @@ int main(int argc, char **argv)
                                        MM_PROT_PERM_READ | MM_PROT_PERM_WRITE | MM_PROT_PERM_EXEC, MM_SECURE);
                     mm_prot_add_region(&execution.protection[1], 0x00000000u, execution.target.flash_size_ns,
                                        MM_PROT_PERM_READ | MM_PROT_PERM_WRITE | MM_PROT_PERM_EXEC, MM_NONSECURE);
+                    mm_prot_add_region(&execution.protection[1], 0x00FF0000u, 0x00001000u, MM_PROT_PERM_READ, MM_SECURE);
                 }
                 if (execution.target.ram_regions != 0 && execution.target.ram_region_count > 0u) {
                     mm_u32 ri;
