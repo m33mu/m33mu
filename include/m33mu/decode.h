@@ -409,6 +409,10 @@ enum mm_op_kind {
     MM_OP_MVE_VCVT_U32_F32,  /* vcvt.u32.f32 (lane 0) */
     MM_OP_MVE_VCMPE_F32,  /* vcmpe.f32 (lane 0) vs #0.0, sets flags */
 
+    /* LDA/LDAB/LDAH and STL/STLB/STLH; access size in bytes is in ra. */
+    MM_OP_LDA,
+    MM_OP_STL,
+
     MM_OP_MAX
 };
 

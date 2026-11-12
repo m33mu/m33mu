@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "mcxw71c/mcxw71c_mmio.h"
+#include "mcxw71c/mcxw71c_flash.h"
 #include "m33mu/memmap.h"
 #include "m33mu/mmio.h"
 #include "m33mu/gpio_pads.h"
@@ -30,6 +31,23 @@
 #define VBAT_BASE 0x4002B000u
 #define VBAT_SEC_BASE 0x5002B000u
 #define VBAT_SIZE 0x340u
+
+#define SMSCM_BASE 0x40015000u
+#define SMSCM_SEC_BASE 0x50015000u
+#define SMSCM_SIZE 0xC04u
+
+#define SPC_BASE 0x40016000u
+#define SPC_SEC_BASE 0x50016000u
+#define SPC_SIZE 0x508u
+#define SPC_SC 0x10u
+#define SPC_SRAMCTL 0x40u
+#define SPC_SC_BUSY (1u << 0)
+#define SPC_SRAMCTL_REQ (1u << 30)
+#define SPC_SRAMCTL_ACK (1u << 31)
+
+#define MCM_SIZE 0x4A8u
+#define MCM_CPCR2 0x34u
+#define MCM_CPCR2_CCBC (1u << 0)
 
 #define SCG_VERID 0x000u
 #define SCG_PARAM 0x004u
@@ -100,6 +118,18 @@ struct vbat_state {
     mm_u32 regs[VBAT_SIZE / 4];
 };
 
+struct smscm_state {
+    mm_u32 regs[SMSCM_SIZE / 4];
+};
+
+struct spc_state {
+    mm_u32 regs[SPC_SIZE / 4];
+};
+
+struct mcm_state {
+    mm_u32 regs[MCM_SIZE / 4];
+};
+
 struct port_state {
     mm_u32 regs[PORT_SIZE / 4];
     mm_u32 pcr[32];
@@ -112,6 +142,9 @@ static struct wdog_state wdog;
 static struct scg_state scg;
 static struct ccm32k_state ccm32k;
 static struct vbat_state vbat;
+static struct smscm_state smscm;
+static struct spc_state spc;
+static struct mcm_state mcm;
 static struct port_state ports[3];
 static struct mm_nvic *g_gpio_nvic = 0;
 
@@ -544,7 +577,11 @@ void mm_mcxw71c_mmio_reset(void)
     memset(&scg, 0, sizeof(scg));
     memset(&ccm32k, 0, sizeof(ccm32k));
     memset(&vbat, 0, sizeof(vbat));
+    memset(&smscm, 0, sizeof(smscm));
+    memset(&spc, 0, sizeof(spc));
+    memset(&mcm, 0, sizeof(mcm));
     memset(ports, 0, sizeof(ports));
+    mm_mcxw71c_fmu_reset();
     g_gpio_nvic = 0;
     mrcc.regs[MCXW71C_MRCC_LPIT0 / 4] = 0x80000000u;
     mrcc.regs[MCXW71C_MRCC_LPSPI0 / 4] = 0x80000000u;
@@ -718,10 +755,81 @@ static mm_bool vbat_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32
     return MM_TRUE;
 }
 
+static mm_bool smscm_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 *value_out)
+{
+    struct smscm_state *m = (struct smscm_state *)opaque;
+    if (m == 0 || value_out == 0 || size_bytes == 0 || size_bytes > 4) return MM_FALSE;
+    if ((offset + size_bytes) > SMSCM_SIZE) return MM_FALSE;
+    memcpy(value_out, (mm_u8 *)m->regs + offset, size_bytes);
+    return MM_TRUE;
+}
+
+static mm_bool smscm_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 value)
+{
+    struct smscm_state *m = (struct smscm_state *)opaque;
+    if (m == 0 || size_bytes == 0 || size_bytes > 4) return MM_FALSE;
+    if ((offset + size_bytes) > SMSCM_SIZE) return MM_FALSE;
+    memcpy((mm_u8 *)m->regs + offset, &value, size_bytes);
+    return MM_TRUE;
+}
+
+static mm_bool spc_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 *value_out)
+{
+    struct spc_state *s = (struct spc_state *)opaque;
+    if (s == 0 || value_out == 0 || size_bytes == 0 || size_bytes > 4) return MM_FALSE;
+    if ((offset + size_bytes) > SPC_SIZE) return MM_FALSE;
+    memcpy(value_out, (mm_u8 *)s->regs + offset, size_bytes);
+    return MM_TRUE;
+}
+
+static mm_bool spc_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 value)
+{
+    struct spc_state *s = (struct spc_state *)opaque;
+    mm_u32 v;
+    if (s == 0 || size_bytes == 0 || size_bytes > 4) return MM_FALSE;
+    if ((offset + size_bytes) > SPC_SIZE) return MM_FALSE;
+    memcpy((mm_u8 *)s->regs + offset, &value, size_bytes);
+    /* Regulator changes settle at once: SC.BUSY never sets, SRAMCTL.ACK
+     * follows REQ. */
+    if (offset == SPC_SC && size_bytes == 4u) {
+        s->regs[SPC_SC / 4u] &= ~SPC_SC_BUSY;
+    } else if (offset == SPC_SRAMCTL && size_bytes == 4u) {
+        v = s->regs[SPC_SRAMCTL / 4u] & ~SPC_SRAMCTL_ACK;
+        if ((v & SPC_SRAMCTL_REQ) != 0u) {
+            v |= SPC_SRAMCTL_ACK;
+        }
+        s->regs[SPC_SRAMCTL / 4u] = v;
+    }
+    return MM_TRUE;
+}
+
+static mm_bool mcm_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 *value_out)
+{
+    struct mcm_state *m = (struct mcm_state *)opaque;
+    if (m == 0 || value_out == 0 || size_bytes == 0 || size_bytes > 4) return MM_FALSE;
+    if ((offset + size_bytes) > MCM_SIZE) return MM_FALSE;
+    memcpy(value_out, (mm_u8 *)m->regs + offset, size_bytes);
+    return MM_TRUE;
+}
+
+static mm_bool mcm_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 value)
+{
+    struct mcm_state *m = (struct mcm_state *)opaque;
+    if (m == 0 || size_bytes == 0 || size_bytes > 4) return MM_FALSE;
+    if ((offset + size_bytes) > MCM_SIZE) return MM_FALSE;
+    memcpy((mm_u8 *)m->regs + offset, &value, size_bytes);
+    /* CPCR2.CCBC clears the code bus cache and reads back as zero. */
+    if (offset == MCM_CPCR2 && size_bytes == 4u) {
+        m->regs[MCM_CPCR2 / 4u] &= ~MCM_CPCR2_CCBC;
+    }
+    return MM_TRUE;
+}
+
 mm_bool mm_mcxw71c_register_mmio(struct mmio_bus *bus)
 {
     struct mmio_region reg;
     if (bus == 0) return MM_FALSE;
+    memset(&reg, 0, sizeof(reg));
 
     reg.base = MRCC_BASE;
     reg.size = MRCC_SIZE;
@@ -767,6 +875,33 @@ mm_bool mm_mcxw71c_register_mmio(struct mmio_bus *bus)
     if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
     reg.base = VBAT_SEC_BASE;
     if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+
+    reg.base = SMSCM_BASE;
+    reg.size = SMSCM_SIZE;
+    reg.opaque = &smscm;
+    reg.read = smscm_read;
+    reg.write = smscm_write;
+    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+    reg.base = SMSCM_SEC_BASE;
+    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+
+    reg.base = SPC_BASE;
+    reg.size = SPC_SIZE;
+    reg.opaque = &spc;
+    reg.read = spc_read;
+    reg.write = spc_write;
+    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+    reg.base = SPC_SEC_BASE;
+    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+
+    reg.base = MCXW71C_MCM_BASE;
+    reg.size = MCM_SIZE;
+    reg.opaque = &mcm;
+    reg.read = mcm_read;
+    reg.write = mcm_write;
+    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+
+    if (!mm_mcxw71c_fmu_register(bus)) return MM_FALSE;
 
     reg.size = GPIO_SIZE;
     reg.read = gpio_read;
@@ -831,11 +966,8 @@ void mm_mcxw71c_flash_bind(struct mm_memmap *map,
                            const struct mm_flash_persist *persist,
                            mm_u32 flags)
 {
-    (void)map;
-    (void)flash;
-    (void)flash_size;
-    (void)persist;
     (void)flags;
+    mm_mcxw71c_fmu_bind(map, flash, flash_size, persist);
 }
 
 mm_u64 mm_mcxw71c_cpu_hz(void)

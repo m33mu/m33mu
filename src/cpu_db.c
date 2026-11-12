@@ -53,6 +53,15 @@
 #include "stm32l552/stm32l552_usart.h"
 #include "stm32l552/stm32l552_spi.h"
 #include "stm32l552/cpu_config.h"
+#include "stm32wba55/stm32wba55_mmio.h"
+#include "stm32wba55/stm32wba55_usart.h"
+#include "stm32wba55/cpu_config.h"
+#include "stm32u385/stm32u385_mmio.h"
+#include "stm32u385/stm32u385_usart.h"
+#include "stm32u385/cpu_config.h"
+#include "stm32c5a3/stm32c5a3_mmio.h"
+#include "stm32c5a3/stm32c5a3_usart.h"
+#include "stm32c5a3/cpu_config.h"
 #include "mcxw71c/mcxw71c_mmio.h"
 #include "mcxw71c/mcxw71c_timers.h"
 #include "mcxw71c/mcxw71c_usart.h"
@@ -62,10 +71,20 @@
 #include "mcxn947/mcxn947_timers.h"
 #include "mcxn947/mcxn947_flexcomm.h"
 #include "mcxn947/cpu_config.h"
+#include "mcxa153/mcxa153_mmio.h"
+#include "mcxa153/mcxa153_usart.h"
+#include "mcxa153/cpu_config.h"
 #include "nrf5340/nrf5340_mmio.h"
 #include "nrf5340/nrf5340_timers.h"
 #include "nrf5340/nrf5340_uart_spi.h"
 #include "nrf5340/cpu_config.h"
+#include "nrf5340net/nrf5340net_timers.h"
+#include "nrf5340net/nrf5340net_uart_spi.h"
+#include "nrf5340net/cpu_config.h"
+#include "nrf54l15/nrf54l15_mmio.h"
+#include "nrf54l15/nrf54l15_timers.h"
+#include "nrf54l15/nrf54l15_uart_spi.h"
+#include "nrf54l15/cpu_config.h"
 #include "nrf54lm20/nrf54lm20_mmio.h"
 #include "nrf54lm20/nrf54lm20_timers.h"
 #include "nrf54lm20/nrf54lm20_uart_spi.h"
@@ -94,6 +113,8 @@
 #include "rw612/rw612_flexcomm.h"
 #include "rw612/rw612_timers.h"
 #include "rw612/cpu_config.h"
+#include "psc3m6/psc3m6_mmio.h"
+#include "psc3m6/cpu_config.h"
 
 struct mm_cpu_entry {
     const char *name;
@@ -332,6 +353,144 @@ static const struct mm_cpu_entry cpu_table[] = {
         }
     },
     {
+        "stm32wba55",
+        {
+            STM32WBA55_FLASH_BASE_S,
+            STM32WBA55_FLASH_SIZE,
+            STM32WBA55_FLASH_BASE_NS,
+            STM32WBA55_FLASH_SIZE,
+            0,
+            0,
+            STM32WBA55_RAM_BASE_S,
+            STM32WBA55_RAM_SIZE,
+            STM32WBA55_RAM_BASE_NS,
+            STM32WBA55_RAM_SIZE,
+            1,
+            STM32WBA55_RAM_REGIONS,
+            STM32WBA55_RAM_REGION_COUNT,
+            0,
+            0,
+            STM32WBA55_FLAGS,
+            STM32WBA55_SOC_RESET,
+            STM32WBA55_SOC_REGISTER,
+            STM32WBA55_FLASH_BIND,
+            STM32WBA55_CLOCK_GET_HZ,
+            STM32WBA55_USART_INIT,
+            STM32WBA55_USART_RESET,
+            STM32WBA55_USART_POLL,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
+        "stm32u385",
+        {
+            STM32U385_FLASH_BASE_S,
+            STM32U385_FLASH_SIZE,
+            STM32U385_FLASH_BASE_NS,
+            STM32U385_FLASH_SIZE,
+            0,
+            0,
+            STM32U385_RAM_BASE_S,
+            STM32U385_RAM_SIZE,
+            STM32U385_RAM_BASE_NS,
+            STM32U385_RAM_SIZE,
+            1,
+            STM32U385_RAM_REGIONS,
+            STM32U385_RAM_REGION_COUNT,
+            0,
+            0,
+            STM32U385_FLAGS,
+            STM32U385_SOC_RESET,
+            STM32U385_SOC_REGISTER,
+            STM32U385_FLASH_BIND,
+            STM32U385_CLOCK_GET_HZ,
+            STM32U385_USART_INIT,
+            STM32U385_USART_RESET,
+            STM32U385_USART_POLL,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
+        "stm32c5a3",
+        {
+            STM32C5A3_FLASH_BASE_S,
+            STM32C5A3_FLASH_SIZE,
+            STM32C5A3_FLASH_BASE_NS,
+            STM32C5A3_FLASH_SIZE,
+            0,
+            0,
+            STM32C5A3_RAM_BASE_S,
+            STM32C5A3_RAM_SIZE,
+            STM32C5A3_RAM_BASE_NS,
+            STM32C5A3_RAM_SIZE,
+            1,
+            STM32C5A3_RAM_REGIONS,
+            STM32C5A3_RAM_REGION_COUNT,
+            0,
+            0,
+            STM32C5A3_FLAGS,
+            STM32C5A3_SOC_RESET,
+            STM32C5A3_SOC_REGISTER,
+            STM32C5A3_FLASH_BIND,
+            STM32C5A3_CLOCK_GET_HZ,
+            STM32C5A3_USART_INIT,
+            STM32C5A3_USART_RESET,
+            STM32C5A3_USART_POLL,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
         "mcxw71c",
         {
             MCXW71C_FLASH_BASE_S,
@@ -424,6 +583,52 @@ static const struct mm_cpu_entry cpu_table[] = {
         }
     },
     {
+        "mcxa153",
+        {
+            MCXA153_FLASH_BASE_S,
+            MCXA153_FLASH_SIZE,
+            MCXA153_FLASH_BASE_NS,
+            MCXA153_FLASH_SIZE,
+            0,
+            0,
+            MCXA153_RAM_BASE_S,
+            MCXA153_RAM_SIZE,
+            MCXA153_RAM_BASE_NS,
+            MCXA153_RAM_SIZE,
+            1,
+            MCXA153_RAM_REGIONS,
+            MCXA153_RAM_REGION_COUNT,
+            MCXA153_MPCBB_BLOCK_SIZE,
+            0,
+            MCXA153_FLAGS,
+            MCXA153_SOC_RESET,
+            MCXA153_SOC_REGISTER,
+            MCXA153_FLASH_BIND,
+            MCXA153_CLOCK_GET_HZ,
+            MCXA153_USART_INIT,
+            MCXA153_USART_RESET,
+            MCXA153_USART_POLL,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
         "nrf5340",
         {
             NRF5340_FLASH_BASE_S,
@@ -470,6 +675,98 @@ static const struct mm_cpu_entry cpu_table[] = {
         }
     },
     {
+        "nrf5340net",
+        {
+            NRF5340NET_FLASH_BASE_S,
+            NRF5340NET_FLASH_SIZE,
+            NRF5340NET_FLASH_BASE_NS,
+            NRF5340NET_FLASH_SIZE,
+            0,
+            0,
+            NRF5340NET_RAM_BASE_S,
+            NRF5340NET_RAM_SIZE,
+            NRF5340NET_RAM_BASE_NS,
+            NRF5340NET_RAM_SIZE,
+            1,
+            NRF5340NET_RAM_REGIONS,
+            NRF5340NET_RAM_REGION_COUNT,
+            NRF5340NET_MPCBB_BLOCK_SIZE,
+            0,
+            NRF5340NET_FLAGS,
+            NRF5340NET_SOC_RESET,
+            NRF5340NET_SOC_REGISTER,
+            NRF5340NET_FLASH_BIND,
+            NRF5340NET_CLOCK_GET_HZ,
+            NRF5340NET_USART_INIT,
+            NRF5340NET_USART_RESET,
+            NRF5340NET_USART_POLL,
+            NRF5340NET_SPI_INIT,
+            NRF5340NET_SPI_RESET,
+            NRF5340NET_SPI_POLL,
+            0,
+            0,
+            0,
+            NRF5340NET_TIMER_INIT,
+            NRF5340NET_TIMER_RESET,
+            NRF5340NET_TIMER_TICK,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
+        "nrf54l15",
+        {
+            NRF54L15_FLASH_BASE_S,
+            NRF54L15_FLASH_SIZE,
+            NRF54L15_FLASH_BASE_NS,
+            NRF54L15_FLASH_SIZE,
+            0,
+            0,
+            NRF54L15_RAM_BASE_S,
+            NRF54L15_RAM_SIZE,
+            NRF54L15_RAM_BASE_NS,
+            NRF54L15_RAM_SIZE,
+            1,
+            NRF54L15_RAM_REGIONS,
+            NRF54L15_RAM_REGION_COUNT,
+            NRF54L15_MPCBB_BLOCK_SIZE,
+            0,
+            NRF54L15_FLAGS,
+            NRF54L15_SOC_RESET,
+            NRF54L15_SOC_REGISTER,
+            NRF54L15_FLASH_BIND,
+            NRF54L15_CLOCK_GET_HZ,
+            NRF54L15_USART_INIT,
+            NRF54L15_USART_RESET,
+            NRF54L15_USART_POLL,
+            NRF54L15_SPI_INIT,
+            NRF54L15_SPI_RESET,
+            NRF54L15_SPI_POLL,
+            0,
+            0,
+            0,
+            NRF54L15_TIMER_INIT,
+            NRF54L15_TIMER_RESET,
+            NRF54L15_TIMER_TICK,
+            NRF54L15_TZ_ATTR,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
         "nrf54lm20",
         {
             NRF54LM20_FLASH_BASE_S,
@@ -504,7 +801,7 @@ static const struct mm_cpu_entry cpu_table[] = {
             NRF54LM20_TIMER_INIT,
             NRF54LM20_TIMER_RESET,
             NRF54LM20_TIMER_TICK,
-            0,
+            NRF54LM20_TZ_ATTR,
             0,
             0,
             0,
@@ -782,7 +1079,7 @@ static const struct mm_cpu_entry cpu_table[] = {
             RW612_TIMER_TICK,
             0,
             0,
-            0,
+            RW612_BOOT_RESOLVE,
             0,
             0,
             0,
@@ -829,6 +1126,52 @@ static const struct mm_cpu_entry cpu_table[] = {
             0,
             IMXRT700_MC_OPS,
             IMXRT700_BOOT_RESOLVE,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
+        "psc3m6",
+        {
+            PSC3M6_FLASH_BASE_S,
+            PSC3M6_FLASH_SIZE,
+            PSC3M6_FLASH_BASE_NS,
+            PSC3M6_FLASH_SIZE,
+            PSC3M6_FLASH_BASE_S2,
+            PSC3M6_FLASH_SIZE,
+            PSC3M6_RAM_BASE_S,
+            PSC3M6_RAM_SIZE,
+            PSC3M6_RAM_BASE_NS,
+            PSC3M6_RAM_SIZE,
+            1,
+            PSC3M6_RAM_REGIONS,
+            PSC3M6_RAM_REGION_COUNT,
+            PSC3M6_MPCBB_BLOCK_SIZE,
+            0,
+            PSC3M6_FLAGS,
+            PSC3M6_SOC_RESET,
+            PSC3M6_SOC_REGISTER,
+            PSC3M6_FLASH_BIND,
+            PSC3M6_CLOCK_GET_HZ,
+            PSC3M6_USART_INIT,
+            PSC3M6_USART_RESET,
+            PSC3M6_USART_POLL,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
             0,
             0,
             0,

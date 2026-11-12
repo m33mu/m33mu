@@ -149,9 +149,10 @@ static int test_nrf54lm20(void)
     mmio_set_active_sec(MM_SECURE);
 
     if (!mmio_bus_write(&map.mmio, RRAMC_BASE_S + RRAMC_CONFIG, 4u, 1u)) goto out;
-    if (!mm_memmap_write(&map, MM_SECURE, BASE_S + 0x2020u, 4u, 0x00AB00CDu)) goto out;
+    /* nRF54L has no secure flash alias: the secure world programs RRAM at 0. */
+    if (!mm_memmap_write(&map, MM_SECURE, BASE_NS + 0x2020u, 4u, 0x00AB00CDu)) goto out;
     if (file_byte(path, 0x2020, &b) != 0 || b != 0xCD) {
-        fprintf(stderr, "nrf54lm20: secure-alias program not persisted\n");
+        fprintf(stderr, "nrf54lm20: secure program not persisted\n");
         goto out;
     }
     rc = 0;

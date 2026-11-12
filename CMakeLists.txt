@@ -677,10 +677,18 @@ add_custom_target(firmware-build
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32h563-wolfssl-iotsafe app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32u585 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32l552 app.bin
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32wba55 app.bin
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32u385 app.bin
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32c5a3 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxw app.bin
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxw-flash app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxn947 app.bin
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxa153 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-nrf5340 app.bin
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-nrf5340net app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-nrf54lm20 app.bin
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-nrf54l all
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-psc3m6 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-pic32ck all
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-pic32ck-sdk clean all
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-m2354 clean all
@@ -785,6 +793,9 @@ add_custom_target(test-firmware
           --secwm2=0:127
   COMMAND /bin/sh -c "$<TARGET_FILE:m33mu> --cpu stm32u585 tests/firmware/test-stm32u585-dualbank/app.bin --dualbank || true"
   COMMAND /bin/sh -c "$<TARGET_FILE:m33mu> --cpu stm32u585 tests/firmware/test-stm32u585-swap-reset/app.bin tests/firmware/test-stm32u585-swap-reset/app.bin:0x100000 --dualbank || true"
+  COMMAND $<TARGET_FILE:m33mu> --cpu stm32wba55 --no-tz tests/firmware/test-stm32wba55/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  COMMAND $<TARGET_FILE:m33mu> --cpu stm32u385 --no-tz tests/firmware/test-stm32u385/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  COMMAND $<TARGET_FILE:m33mu> --cpu stm32c5a3 --dualbank tests/firmware/test-stm32c5a3/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
   COMMAND /bin/sh -c "$<TARGET_FILE:m33mu> tests/firmware/test-rtos-exceptions/app.bin || true"
   COMMAND /bin/sh -c "$<TARGET_FILE:m33mu> tests/firmware/test-tz-bxns-cmse-sau-mpu/build/secure.bin tests/firmware/test-tz-bxns-cmse-sau-mpu/build/nonsecure.bin:0x2000 || true"
   COMMAND /bin/sh -c "$<TARGET_FILE:m33mu> --cpu pic32ck tests/firmware/test-pic32ck-sdk/test_fcw.bin || true"
@@ -798,6 +809,22 @@ add_custom_target(test-firmware
   COMMAND $<TARGET_FILE:m33mu> --cpu imxrt700 --expect-bkpt 0x7f tests/firmware/test-imxrt700/app-ramload.bin
           --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
   COMMAND $<TARGET_FILE:m33mu> --cpu rp2350 tests/firmware/test-rp2350-pio/app.bin
+          --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  COMMAND $<TARGET_FILE:m33mu> --cpu nrf5340net tests/firmware/test-nrf5340net/app.bin
+          --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  COMMAND $<TARGET_FILE:m33mu> --cpu nrf54l15 tests/firmware/test-nrf54l/app-nrf54l15.bin
+          --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  COMMAND $<TARGET_FILE:m33mu> --cpu nrf54lm20 tests/firmware/test-nrf54l/app-nrf54lm20.bin
+          --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  COMMAND $<TARGET_FILE:m33mu> --cpu mcxw71c tests/firmware/test-mcxw-flash/app.bin
+          --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  COMMAND $<TARGET_FILE:m33mu> --cpu rw612 tests/firmware/test-rw612-sdk/test_uart.bin
+          --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  COMMAND $<TARGET_FILE:m33mu> --cpu rw612 tests/firmware/test-rw612-sdk/test_flexspi.bin
+          --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  COMMAND $<TARGET_FILE:m33mu> --cpu mcxa153 --no-tz tests/firmware/test-mcxa153/app.bin
+          --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  COMMAND $<TARGET_FILE:m33mu> --cpu psc3m6 tests/firmware/test-psc3m6/app.bin
           --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
   DEPENDS m33mu firmware-build
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
@@ -883,6 +910,14 @@ add_custom_target(test-mcxw
   COMMAND $<TARGET_FILE:m33mu> --cpu mcxw71c tests/firmware/test-mcxw/app.bin
           --uart-stdout
           --spiflash:SPI0:file=tests/firmware/test-mcxw/spi_flash.bin:size=2097152:mmap=0x01000000:cs=PA0
+  DEPENDS m33mu
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)
+
+add_custom_target(test-mcxw-flash
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxw-flash app.bin
+  COMMAND $<TARGET_FILE:m33mu> --cpu mcxw71c tests/firmware/test-mcxw-flash/app.bin
+          --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
   DEPENDS m33mu
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )

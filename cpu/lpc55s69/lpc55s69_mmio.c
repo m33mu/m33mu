@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include "lpc55s69/lpc55s69_mmio.h"
 #include "lpc55s69/lpc55s69_romapi.h"
+#include "m33mu/mem_prot.h"
 #include "lpc55s69/lpc55s69_hashcrypt.h"
 #include "lpc55s69/lpc55s69_casper.h"
 #include "lpc55s69/lpc55s69_puf.h"
@@ -511,7 +512,37 @@ static const mm_u32 ahbsc_ram_rule_base[5] = {
     0xE0u,   /* RAM4 */
 };
 
+/* MISC_CTRL_REG/_DP_REG 2-bit fields, 01 selects: ENABLE_SECURE_CHECKING[3:2]
+ * (reset off), DISABLE_SMART_MASTER_STRICT_MODE[13:12] (reset strict). Both
+ * copies must agree before a check is dropped or tier mode is entered. */
+#define AHBSC_MISC_CTRL_DP_REG  0xFF8u
+#define AHBSC_MISC_CTRL_REG     0xFFCu
+#define AHBSC_MISC_CTRL_RESET   0x0000AAAAu
+#define AHBSC_SECURE_CHECKING_SHIFT 2u
+#define AHBSC_SMART_STRICT_SHIFT    12u
+#define AHBSC_FIELD_SET             0x1u
+#define AHBSC_FIELD_OFF             0x2u
+
 static mm_u32 ahbsc_regs[AHBSC_SIZE / 4u];
+
+static mm_u32 ahbsc_misc_field(mm_u32 reg, mm_u32 shift)
+{
+    return (ahbsc_regs[reg / 4u] >> shift) & 0x3u;
+}
+
+static mm_bool ahbsc_checking_active(void)
+{
+    return (ahbsc_misc_field(AHBSC_MISC_CTRL_REG, AHBSC_SECURE_CHECKING_SHIFT) == AHBSC_FIELD_OFF &&
+            ahbsc_misc_field(AHBSC_MISC_CTRL_DP_REG, AHBSC_SECURE_CHECKING_SHIFT) == AHBSC_FIELD_OFF) ?
+        MM_FALSE : MM_TRUE;
+}
+
+static mm_bool ahbsc_cpu_strict(void)
+{
+    return (ahbsc_misc_field(AHBSC_MISC_CTRL_REG, AHBSC_SMART_STRICT_SHIFT) == AHBSC_FIELD_SET &&
+            ahbsc_misc_field(AHBSC_MISC_CTRL_DP_REG, AHBSC_SMART_STRICT_SHIFT) == AHBSC_FIELD_SET) ?
+        MM_FALSE : MM_TRUE;
+}
 
 static mm_bool ahbsc_read(void *opaque, mm_u32 offset, mm_u32 size_bytes,
                           mm_u32 *value_out)
@@ -1267,6 +1298,8 @@ void mm_lpc55s69_mmio_reset(void)
      * Boot ROM marks PUF/RNG secure+privileged before jumping to the app.
      * ENUM_S_P = 3 for both. */
     ahbsc_regs[0x11Cu / 4u] = (3u << 12) | (3u << 8); /* PUF | RNG = S_P */
+    ahbsc_regs[AHBSC_MISC_CTRL_DP_REG / 4u] = AHBSC_MISC_CTRL_RESET;
+    ahbsc_regs[AHBSC_MISC_CTRL_REG / 4u] = AHBSC_MISC_CTRL_RESET;
 
     /* New peripheral stubs — clear all first, then set non-zero resets */
     memset(gint0_regs,       0, sizeof(gint0_regs));
@@ -1430,6 +1463,8 @@ mm_bool mm_lpc55s69_register_mmio(struct mmio_bus *bus)
     reg.opaque = ahbsc_regs;
     reg.read   = ahbsc_read;
     reg.write  = ahbsc_write;
+    mm_prot_set_mpcbb_gate(mm_lpc55s69_mpcbb_block_secure, ahbsc_checking_active,
+                           ahbsc_cpu_strict);
     if (!reg_pair(bus, &reg, AHBSC_BASE, AHBSC_SEC_BASE))
         return MM_FALSE;
 

@@ -42,7 +42,7 @@ static mm_bool timer_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32
     struct nrf_timer_state *t = (struct nrf_timer_state *)opaque;
     if (t == 0 || value_out == 0 || size_bytes == 0 || size_bytes > 4u) return MM_FALSE;
     if ((offset + size_bytes) > NRF_TIMER_SIZE) return MM_FALSE;
-    if (offset >= TIMER_CC0 && offset < TIMER_CC0 + NRF_TIMER_MAX_CC * 4u && size_bytes == 4u) {
+    if (offset >= TIMER_CC0 && offset < TIMER_CC0 + t->cc_count * 4u && size_bytes == 4u) {
         *value_out = t->cc[(offset - TIMER_CC0) / 4u];
         return MM_TRUE;
     }
@@ -81,7 +81,7 @@ static mm_bool timer_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u3
         if ((value & 1u) != 0u) t->running = MM_FALSE;
         return MM_TRUE;
     }
-    if (offset >= TIMER_EVENTS_COMPARE0 && offset < TIMER_EVENTS_COMPARE0 + NRF_TIMER_MAX_CC * 4u && size_bytes == 4u) {
+    if (offset >= TIMER_EVENTS_COMPARE0 && offset < TIMER_EVENTS_COMPARE0 + t->cc_count * 4u && size_bytes == 4u) {
         if (value == 0u) {
             t->regs[offset / 4u] = 0u;
         }
@@ -95,7 +95,7 @@ static mm_bool timer_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u3
         t->regs[TIMER_INTENSET / 4u] &= ~value;
         return MM_TRUE;
     }
-    if (offset >= TIMER_CC0 && offset < TIMER_CC0 + NRF_TIMER_MAX_CC * 4u && size_bytes == 4u) {
+    if (offset >= TIMER_CC0 && offset < TIMER_CC0 + t->cc_count * 4u && size_bytes == 4u) {
         t->cc[(offset - TIMER_CC0) / 4u] = value;
         return MM_TRUE;
     }
@@ -124,9 +124,11 @@ void nrf_timers_register(struct nrf_timers_state *state,
     for (i = 0; i < state->count; ++i) {
         state->timers[i].owner = state;
         state->timers[i].irq = irqs[i];
+        state->timers[i].cc_count = NRF_TIMER_DEFAULT_CC;
         reg.base = bases_ns[i];
         reg.opaque = &state->timers[i];
         if (!mmio_bus_register_region(bus, &reg)) return;
+        if (bases_s[i] == bases_ns[i]) continue;
         reg.base = bases_s[i];
         if (!mmio_bus_register_region(bus, &reg)) return;
     }
@@ -137,13 +139,28 @@ void nrf_timers_reset(struct nrf_timers_state *state)
     size_t i;
     struct mm_nvic *nvic;
     size_t count;
+    int irqs[NRF_TIMER_MAX_INSTANCES];
+    mm_u32 cc_counts[NRF_TIMER_MAX_INSTANCES];
     if (state == 0) return;
     nvic = state->nvic;
     count = state->count;
+    for (i = 0; i < NRF_TIMER_MAX_INSTANCES; ++i) {
+        irqs[i] = state->timers[i].irq;
+        cc_counts[i] = state->timers[i].cc_count;
+    }
     memset(state, 0, sizeof(*state));
     state->nvic = nvic;
     state->count = count;
     for (i = 0; i < state->count; ++i) {
         state->timers[i].owner = state;
+        state->timers[i].irq = irqs[i];
+        state->timers[i].cc_count = cc_counts[i];
     }
+}
+
+void nrf_timer_set_cc_count(struct nrf_timers_state *state, size_t index, mm_u32 count)
+{
+    if (state == 0 || index >= state->count) return;
+    if (count > NRF_TIMER_MAX_CC) count = NRF_TIMER_MAX_CC;
+    state->timers[index].cc_count = count;
 }

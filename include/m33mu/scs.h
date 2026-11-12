@@ -110,6 +110,7 @@ struct mm_scs {
     mm_bool pend_st_ns;
     mm_bool trace_enabled;
     mm_bool fpu_present;
+    mm_bool mpu_present;
 };
 
 struct mm_scs_mux {
@@ -124,6 +125,7 @@ void mm_scs_exception_set_active(struct mm_scs *scs, enum mm_sec_state sec, mm_u
 void mm_scs_exception_clear_active(struct mm_scs *scs, enum mm_sec_state sec, mm_u32 exc_num);
 void mm_scs_set_vectactive(struct mm_scs *scs, enum mm_sec_state sec, mm_u32 exc_num);
 void mm_scs_set_fpu_present(struct mm_scs *scs, mm_bool present);
+void mm_scs_set_mpu_present(struct mm_scs *scs, mm_bool present);
 
 /* Registers MMIO regions for secure and non-secure SCS views. */
 mm_bool mm_scs_register_regions(struct mm_scs *scs, struct mmio_bus *bus, mm_u32 base_secure, mm_u32 base_nonsecure, struct mm_nvic *nvic);

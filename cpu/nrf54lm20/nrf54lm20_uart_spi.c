@@ -5,6 +5,7 @@
 #include "nrf54lm20/nrf54lm20_uart_spi.h"
 #include "nrf54lm20/nrf54lm20_mmio.h"
 #include "nrf_uart_spi.h"
+#include "nrf54l_mmio.h"
 
 static struct nrf_serial_state g_serials;
 
@@ -23,13 +24,16 @@ static const struct nrf_serial_config g_cfg = {
     g_has_uarte,
     sizeof(g_bases) / sizeof(g_bases[0]),
     0,
-    MM_FALSE,
     MM_TRUE,
     MM_FALSE,
     MM_FALSE,
     MM_TRUE,
+    MM_FALSE,
+    MM_FALSE,
+    MM_FALSE,
     MM_TRUE,
-    MM_TRUE
+    nrf54l_dma_sec,
+    MM_FALSE
 };
 
 void mm_nrf54lm20_usart_init(struct mmio_bus *bus, struct mm_nvic *nvic)

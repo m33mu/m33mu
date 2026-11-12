@@ -47,16 +47,28 @@ Supported profiles at the time of writing:
 .BR stm32h5f4 ,
 .BR stm32u585 ,
 .BR stm32l552 ,
+.BR stm32wba55 ,
+.BR stm32u385 ,
+.BR stm32c5a3 ,
 .BR lpc55s69 ,
 .BR mcxw71c ,
 .BR mcxn947 ,
+.BR mcxa153 ,
 .BR rw612 ,
 .BR nrf5340 ,
+.BR nrf5340net ,
+.BR nrf54l15 ,
 .BR nrf54lm20 ,
 .BR rp2350 ,
 .BR pic32ck ,
 .BR m2354 ,
-.BR imxrt700 .
+.BR imxrt700 ,
+.BR psc3m6 .
+On
+.BR mcxw71c ,
+flash is programmed through the FMU0 command interface (phrase and page
+program, sector erase) and LPUART1 takes
+.BR --uart-stdout .
 .TP
 .BR --gdb
 Start the built\-in GDB remote serial protocol server on port 1234.
@@ -690,6 +702,15 @@ When set to 1, trace WFE/WFI sleep and wake decisions.
 .B M33MU_PROT_TRACE
 Print SAU/MPU attribution decisions.
 Values 1 through 3 increase verbosity.
+.TP
+.B M33MU_ROMAPI_TRACE
+When set, trace boot ROM API calls (RW612, i.MX RT700).
+.TP
+.B M33MU_FLEXSPI_TRACE
+When set, trace RW612 FlexSPI NOR program and erase operations.
+.TP
+.B M33MU_RW612_CHIP_REV
+RW612 silicon revision reported in SOCCTRL CHIP_INFO (default 2, A2); 0 selects the A0 ROM API tree.
 .TP
 .B M33MU_STM32H5_IDCODE
 Replace the STM32H5 DBGMCU_IDCODE value (hex with 0x, or decimal).

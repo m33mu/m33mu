@@ -33,4 +33,8 @@ void mm_mcxw71c_gpio_set_nvic(struct mm_nvic *nvic);
 #define MCXW71C_MRCC_GPIOB    0x408u
 #define MCXW71C_MRCC_GPIOC    0x40Cu
 
+/* MCM (flash cache control) sits in the vendor PPB */
+#define MCXW71C_MCM_BASE      0xE0080000u
+#define MCXW71C_MCM_SIZE      0x1000u
+
 #endif /* M33MU_MCXW71C_MMIO_H */

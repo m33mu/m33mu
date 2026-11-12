@@ -50,6 +50,16 @@ typedef mm_bool (*mm_flash_write_cb)(void *opaque,
 
 typedef void (*mm_write_observer)(void *opaque, mm_u32 addr, mm_u32 size_bytes);
 
+/* Optional SoC bus filter (a memory protection controller such as the nRF54L
+ * MPC), consulted on every access: MM_FALSE fails it. `dma` marks a bus master
+ * access whose `sec` is the transaction attribute itself. */
+typedef mm_bool (*mm_access_filter)(void *opaque,
+                                    enum mm_access_type type,
+                                    enum mm_sec_state sec,
+                                    mm_u32 addr,
+                                    mm_u32 size_bytes,
+                                    mm_bool dma);
+
 /*
  * ECC check callback: called before every flash read/fetch with the byte
  * offset within the flash buffer.  Return MM_TRUE to allow the read, or
@@ -124,6 +134,8 @@ struct mm_memmap {
     void *bus_attr_opaque;
     mm_write_observer write_observer;
     void *write_observer_opaque;
+    mm_access_filter access_filter;
+    void *access_filter_opaque;
 };
 
 void mm_memmap_init(struct mm_memmap *map, struct mmio_region *regions, size_t region_capacity);
@@ -135,6 +147,7 @@ void mm_memmap_set_flash_sector_secure(struct mm_memmap *map, mm_flash_sector_se
 void mm_memmap_set_bus_attr(struct mm_memmap *map, mm_bus_attr_cb fn, void *opaque);
 void mm_memmap_set_code_cache(struct mm_memmap *map, struct mm_code_cache *cc);
 void mm_memmap_set_write_observer(struct mm_memmap *map, mm_write_observer fn, void *opaque);
+void mm_memmap_set_access_filter(struct mm_memmap *map, mm_access_filter fn, void *opaque);
 mm_bool mm_memmap_configure_flash(struct mm_memmap *map, const struct mm_target_cfg *cfg, const mm_u8 *backing, mm_bool secure_view);
 mm_bool mm_memmap_configure_ram(struct mm_memmap *map, const struct mm_target_cfg *cfg, mm_u8 *backing, mm_bool secure_view);
 
@@ -148,5 +161,8 @@ void mm_memmap_set_last_pc(mm_u32 pc);
 mm_bool mm_memmap_fetch_read16(const struct mm_memmap *map, enum mm_sec_state sec, mm_u32 addr, mm_u32 *value_out);
 mm_bool mm_memmap_read8(const struct mm_memmap *map, enum mm_sec_state sec, mm_u32 addr, mm_u8 *value_out);
 mm_bool mm_memmap_write8(struct mm_memmap *map, enum mm_sec_state sec, mm_u32 addr, mm_u8 value);
+/* Peripheral DMA: no CPU SAU/MPU check, only the SoC access filter. */
+mm_bool mm_memmap_dma_read8(const struct mm_memmap *map, enum mm_sec_state sec, mm_u32 addr, mm_u8 *value_out);
+mm_bool mm_memmap_dma_write8(struct mm_memmap *map, enum mm_sec_state sec, mm_u32 addr, mm_u8 value);
 
 #endif /* M33MU_MEMMAP_H */

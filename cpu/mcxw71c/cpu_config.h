@@ -35,6 +35,7 @@ static const struct mm_ram_region MCXW71C_RAM_REGIONS[] = {
 #define MCXW71C_TIMER_RESET    mm_mcxw71c_timers_reset
 #define MCXW71C_TIMER_TICK     mm_mcxw71c_timers_tick
 
-#define MCXW71C_FLAGS MM_TARGET_FLAG_FPU
+/* The core always resets Secure; TZEN=0 images run Secure off the NS aliases */
+#define MCXW71C_FLAGS (MM_TARGET_FLAG_FPU | MM_TARGET_FLAG_SECURE_BOOT)
 
 #endif /* M33MU_CPU_MCXW71C_CONFIG_H */

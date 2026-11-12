@@ -12,17 +12,14 @@
 #include "m33mu/spi_bus.h"
 
 /*
- * RW612 FlexComm — 5 instances exposed to firmware:
- *   FC0  0x40106000  (domain 0, PSCCTL1 bit 8)
- *   FC1  0x40107000  (domain 0, PSCCTL1 bit 9)
- *   FC2  0x40108000  (domain 0, PSCCTL1 bit 10)
- *   FC3  0x40109000  (domain 0, PSCCTL1 bit 11)
- *   FC14 0x40126000  (domain 1, PSCCTL1 bit 8)
- *
- * The clock/reset bit positions are an emulator convention: the test board
- * code in tests/firmware/test-rw612-sdk uses the same map, and any HAL we
- * exercise (NXP FSL fsl_usart) is fed clock-enable stubs that bypass the
- * register-level access entirely.
+ * RW612 FlexComm — 5 instances exposed to firmware.  Clock gate and reset
+ * are the CLKCTL1 PSCCTL0 / RSTCTL1 PRSTCTL0 bits the SDK (fsl_clock.h
+ * kCLOCK_FlexcommN, fsl_reset.h kFCn_RST_SHIFT_RSTn) drives:
+ *   FC0  0x40106000  (domain 1, PSCCTL0 bit 8)
+ *   FC1  0x40107000  (domain 1, PSCCTL0 bit 9)
+ *   FC2  0x40108000  (domain 1, PSCCTL0 bit 10)
+ *   FC3  0x40109000  (domain 1, PSCCTL0 bit 11)
+ *   FC14 0x40126000  (domain 1, PSCCTL0 bit 22)
  *
  * The register layout matches LPC55S69 FlexComm verbatim — same USART/SPI
  * mode select, same FIFO controls, same status bits — so the NXP SDK driver
@@ -39,11 +36,11 @@ struct flexcomm_inst_def {
 };
 
 static const struct flexcomm_inst_def flexcomm_defs[FLEXCOMM_COUNT] = {
-    { 0x40106000u, 0u, 0x14u,  8u },  /* FC0 */
-    { 0x40107000u, 0u, 0x14u,  9u },  /* FC1 */
-    { 0x40108000u, 0u, 0x14u, 10u },  /* FC2 */
-    { 0x40109000u, 0u, 0x14u, 11u },  /* FC3 */
-    { 0x40126000u, 1u, 0x14u,  8u },  /* FC14 */
+    { 0x40106000u, 1u, 0x10u,  8u },  /* FC0 */
+    { 0x40107000u, 1u, 0x10u,  9u },  /* FC1 */
+    { 0x40108000u, 1u, 0x10u, 10u },  /* FC2 */
+    { 0x40109000u, 1u, 0x10u, 11u },  /* FC3 */
+    { 0x40126000u, 1u, 0x10u, 22u },  /* FC14 */
 };
 
 #define FC_PSELID          0xFF8u

@@ -116,6 +116,8 @@ void mm_mcxw71c_usart_init(struct mmio_bus *bus, struct mm_nvic *nvic)
     static const mm_u32 mrcc_offsets[] = {
         MCXW71C_MRCC_LPUART0, MCXW71C_MRCC_LPUART1
     };
+    /* LPUART1 is the FRDM-MCXW71 debug console: it claims --uart-stdout. */
+    static const size_t open_order[] = { 1u, 0u };
     size_t i;
     (void)nvic;
     uart_count = sizeof(bases) / sizeof(bases[0]);
@@ -123,6 +125,7 @@ void mm_mcxw71c_usart_init(struct mmio_bus *bus, struct mm_nvic *nvic)
         struct lpuart_inst *u = &uarts[i];
         struct mmio_region reg;
         memset(u, 0, sizeof(*u));
+        memset(&reg, 0, sizeof(reg));
         u->base = bases[i];
         u->mrcc_offset = mrcc_offsets[i];
         mm_uart_io_init(&u->io);
@@ -138,7 +141,9 @@ void mm_mcxw71c_usart_init(struct mmio_bus *bus, struct mm_nvic *nvic)
         mmio_bus_register_region(bus, &reg);
         reg.base = bases[i] + 0x10000000u;
         mmio_bus_register_region(bus, &reg);
-
+    }
+    for (i = 0; i < uart_count; ++i) {
+        struct lpuart_inst *u = &uarts[open_order[i]];
         if (mm_uart_io_open(&u->io, u->base)) {
             if (mm_tui_is_active()) {
                 mm_tui_attach_uart(u->label, u->io.name);

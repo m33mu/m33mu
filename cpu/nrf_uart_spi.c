@@ -49,6 +49,59 @@
 #define INT_TXDRDY (1u << 7)
 #define INT_ENDTX  (1u << 8)
 
+/* nRF54 layout (cfg->dma_regs): EasyDMA tasks, events and pointers moved
+ * into TASKS_DMA/EVENTS_DMA and the DMA.RX/DMA.TX register groups. */
+#define DMA_UARTE_TASKS_FLUSHRX 0x01Cu
+#define DMA_TASKS_RX_START      0x028u
+#define DMA_TASKS_RX_STOP       0x02Cu
+#define DMA_TASKS_TX_START      0x050u
+#define DMA_TASKS_TX_STOP       0x054u
+#define DMA_SPIM_TASKS_START    0x000u
+#define DMA_SPIM_TASKS_STOP     0x004u
+
+#define DMA_SPIM_EVENTS_STARTED 0x100u
+#define DMA_SPIM_EVENTS_STOPPED 0x104u
+#define DMA_SPIM_EVENTS_END     0x108u
+#define DMA_EVENTS_TXDRDY       0x10Cu
+#define DMA_EVENTS_RXDRDY       0x110u
+#define DMA_EVENTS_RXTO         0x124u
+#define DMA_EVENTS_TXSTOPPED    0x130u
+#define DMA_EVENTS_RX_END       0x14Cu
+#define DMA_EVENTS_RX_READY     0x150u
+#define DMA_EVENTS_RX_BUSERROR  0x154u
+#define DMA_EVENTS_TX_END       0x168u
+#define DMA_EVENTS_TX_READY     0x16Cu
+#define DMA_EVENTS_TX_BUSERROR  0x170u
+#define DMA_EVENTS_FIRST        0x100u
+#define DMA_EVENTS_LAST         0x17Cu
+
+#define DMA_INTEN    0x300u
+#define DMA_INTENSET 0x304u
+#define DMA_INTENCLR 0x308u
+
+#define DMA_RX_PTR    0x704u
+#define DMA_RX_MAXCNT 0x708u
+#define DMA_RX_AMOUNT 0x70Cu
+#define DMA_TX_PTR    0x73Cu
+#define DMA_TX_MAXCNT 0x740u
+#define DMA_TX_AMOUNT 0x744u
+#define DMA_RX_BUSERRORADDRESS 0x720u
+#define DMA_TX_BUSERRORADDRESS 0x758u
+
+#define DMA_INT_SPIM_STARTED (1u << 0)
+#define DMA_INT_SPIM_STOPPED (1u << 1)
+#define DMA_INT_SPIM_END     (1u << 2)
+#define DMA_INT_TXDRDY       (1u << 3)
+#define DMA_INT_RXDRDY       (1u << 4)
+#define DMA_INT_RXTO         (1u << 9)
+#define DMA_INT_TXSTOPPED    (1u << 12)
+#define DMA_INT_RX_END       (1u << 19)
+#define DMA_INT_RX_READY     (1u << 20)
+#define DMA_INT_RX_BUSERROR  (1u << 21)
+#define DMA_INT_TX_END       (1u << 26)
+#define DMA_INT_TX_READY     (1u << 27)
+#define DMA_INT_TX_BUSERROR  (1u << 28)
+
 static struct mm_memmap *serial_map(void)
 {
     return mm_memmap_current();
@@ -66,6 +119,28 @@ static mm_bool dma_write8(mm_u32 addr, mm_u8 value)
     struct mm_memmap *map = serial_map();
     if (map == 0) return MM_FALSE;
     return mm_memmap_write8(map, mmio_active_sec(), addr, value);
+}
+
+static enum mm_sec_state serial_dma_sec(const struct nrf_serial_inst *s)
+{
+    if (s->owner->cfg->dma_sec != 0) {
+        return s->owner->cfg->dma_sec(s->base);
+    }
+    return mmio_active_sec();
+}
+
+static mm_bool serial_dma_read8(const struct nrf_serial_inst *s, mm_u32 addr, mm_u8 *value_out)
+{
+    struct mm_memmap *map = serial_map();
+    if (map == 0 || value_out == 0) return MM_FALSE;
+    return mm_memmap_dma_read8(map, serial_dma_sec(s), addr, value_out);
+}
+
+static mm_bool serial_dma_write8(const struct nrf_serial_inst *s, mm_u32 addr, mm_u8 value)
+{
+    struct mm_memmap *map = serial_map();
+    if (map == 0) return MM_FALSE;
+    return mm_memmap_dma_write8(map, serial_dma_sec(s), addr, value);
 }
 
 static mm_bool serial_clock_ready(const struct nrf_serial_state *state)
@@ -176,6 +251,202 @@ static void serial_uarte_start_tx(struct nrf_serial_inst *s)
     }
 }
 
+static void serial_dma_rx_try(struct nrf_serial_inst *s)
+{
+    mm_u32 rx_cnt, rx_ptr, amount;
+    if (s == 0 || !s->rx_running) return;
+    if ((s->regs[ENABLE / 4u] & 0xFu) != ENABLE_UARTE) return;
+    rx_cnt = s->regs[DMA_RX_MAXCNT / 4u];
+    rx_ptr = s->regs[DMA_RX_PTR / 4u];
+    amount = s->regs[DMA_RX_AMOUNT / 4u];
+    while (amount < rx_cnt && mm_uart_io_has_rx(&s->io)) {
+        mm_u8 byte = mm_uart_io_read(&s->io);
+        if (!serial_dma_write8(s, rx_ptr + amount, byte)) {
+            s->regs[DMA_RX_BUSERRORADDRESS / 4u] = rx_ptr + amount;
+            s->regs[DMA_RX_AMOUNT / 4u] = amount;
+            s->rx_running = MM_FALSE;
+            serial_event_set(s, DMA_EVENTS_RX_BUSERROR, DMA_INT_RX_BUSERROR);
+            return;
+        }
+        amount++;
+        serial_event_set(s, DMA_EVENTS_RXDRDY, DMA_INT_RXDRDY);
+    }
+    s->regs[DMA_RX_AMOUNT / 4u] = amount;
+    if (amount >= rx_cnt && rx_cnt != 0u) {
+        s->rx_running = MM_FALSE;
+        serial_event_set(s, DMA_EVENTS_RX_END, DMA_INT_RX_END);
+    }
+}
+
+/* FLUSHRX moves what the RX FIFO still holds into the DMA buffer. */
+static void serial_dma_flush_rx(struct nrf_serial_inst *s)
+{
+    mm_u32 rx_cnt = s->regs[DMA_RX_MAXCNT / 4u];
+    mm_u32 rx_ptr = s->regs[DMA_RX_PTR / 4u];
+    mm_u32 amount = 0u;
+    s->rx_running = MM_FALSE;
+    while (amount < rx_cnt && mm_uart_io_has_rx(&s->io)) {
+        mm_u8 byte = mm_uart_io_read(&s->io);
+        if (!serial_dma_write8(s, rx_ptr + amount, byte)) {
+            s->regs[DMA_RX_BUSERRORADDRESS / 4u] = rx_ptr + amount;
+            s->regs[DMA_RX_AMOUNT / 4u] = amount;
+            serial_event_set(s, DMA_EVENTS_RX_BUSERROR, DMA_INT_RX_BUSERROR);
+            return;
+        }
+        amount++;
+    }
+    s->regs[DMA_RX_AMOUNT / 4u] = amount;
+    serial_event_set(s, DMA_EVENTS_RX_END, DMA_INT_RX_END);
+}
+
+static void serial_dma_tx_start(struct nrf_serial_inst *s)
+{
+    mm_u32 tx_cnt, tx_ptr, i;
+    if (s == 0) return;
+    if ((s->regs[ENABLE / 4u] & 0xFu) != ENABLE_UARTE) return;
+    serial_uarte_ensure_open(s);
+    tx_cnt = s->regs[DMA_TX_MAXCNT / 4u];
+    tx_ptr = s->regs[DMA_TX_PTR / 4u];
+    serial_event_set(s, DMA_EVENTS_TX_READY, DMA_INT_TX_READY);
+    for (i = 0; i < tx_cnt; ++i) {
+        mm_u8 out = 0u;
+        if (!serial_dma_read8(s, tx_ptr + i, &out)) {
+            s->regs[DMA_TX_BUSERRORADDRESS / 4u] = tx_ptr + i;
+            (void)mm_uart_io_flush(&s->io);
+            s->regs[DMA_TX_AMOUNT / 4u] = i;
+            serial_event_set(s, DMA_EVENTS_TX_BUSERROR, DMA_INT_TX_BUSERROR);
+            return;
+        }
+        mm_uart_io_queue_tx(&s->io, out);
+        serial_event_set(s, DMA_EVENTS_TXDRDY, DMA_INT_TXDRDY);
+    }
+    (void)mm_uart_io_flush(&s->io);
+    s->regs[DMA_TX_AMOUNT / 4u] = tx_cnt;
+    serial_event_set(s, DMA_EVENTS_TX_END, DMA_INT_TX_END);
+}
+
+static void serial_dma_spim_run(struct nrf_serial_inst *s)
+{
+    mm_u32 tx_cnt, rx_cnt, tx_ptr, rx_ptr, i, total;
+    mm_u8 orc;
+    if (s == 0) return;
+    if ((s->regs[ENABLE / 4u] & 0xFu) != ENABLE_SPIM) return;
+    tx_cnt = s->regs[DMA_TX_MAXCNT / 4u];
+    rx_cnt = s->regs[DMA_RX_MAXCNT / 4u];
+    tx_ptr = s->regs[DMA_TX_PTR / 4u];
+    rx_ptr = s->regs[DMA_RX_PTR / 4u];
+    orc = (mm_u8)(s->regs[ORC / 4u] & 0xFFu);
+    total = (tx_cnt > rx_cnt) ? tx_cnt : rx_cnt;
+    serial_event_set(s, DMA_SPIM_EVENTS_STARTED, DMA_INT_SPIM_STARTED);
+    serial_event_set(s, DMA_EVENTS_RX_READY, DMA_INT_RX_READY);
+    serial_event_set(s, DMA_EVENTS_TX_READY, DMA_INT_TX_READY);
+    for (i = 0; i < total; ++i) {
+        mm_u8 out = orc;
+        mm_u8 in;
+        if (i < tx_cnt && !serial_dma_read8(s, tx_ptr + i, &out)) {
+            s->regs[DMA_TX_BUSERRORADDRESS / 4u] = tx_ptr + i;
+            s->regs[DMA_TX_AMOUNT / 4u] = i;
+            s->regs[DMA_RX_AMOUNT / 4u] = (i < rx_cnt) ? i : rx_cnt;
+            serial_event_set(s, DMA_EVENTS_TX_BUSERROR, DMA_INT_TX_BUSERROR);
+            mm_spi_bus_end((int)s->bus_index);
+            return;
+        }
+        in = mm_spi_bus_xfer((int)s->bus_index, out);
+        if (i < rx_cnt && !serial_dma_write8(s, rx_ptr + i, in)) {
+            s->regs[DMA_RX_BUSERRORADDRESS / 4u] = rx_ptr + i;
+            s->regs[DMA_TX_AMOUNT / 4u] = (i < tx_cnt) ? i + 1u : tx_cnt;
+            s->regs[DMA_RX_AMOUNT / 4u] = i;
+            serial_event_set(s, DMA_EVENTS_RX_BUSERROR, DMA_INT_RX_BUSERROR);
+            mm_spi_bus_end((int)s->bus_index);
+            return;
+        }
+    }
+    s->regs[DMA_TX_AMOUNT / 4u] = tx_cnt;
+    s->regs[DMA_RX_AMOUNT / 4u] = rx_cnt;
+    serial_event_set(s, DMA_EVENTS_TX_END, DMA_INT_TX_END);
+    serial_event_set(s, DMA_EVENTS_RX_END, DMA_INT_RX_END);
+    serial_event_set(s, DMA_SPIM_EVENTS_END, DMA_INT_SPIM_END);
+    mm_spi_bus_end((int)s->bus_index);
+}
+
+static mm_bool serial_dma_write(struct nrf_serial_inst *s, mm_u32 offset, mm_u32 size_bytes, mm_u32 value)
+{
+    mm_u32 mode = s->regs[ENABLE / 4u] & 0xFu;
+    mm_bool trigger = (size_bytes == 4u && (value & 1u) != 0u) ? MM_TRUE : MM_FALSE;
+
+    if (mode == ENABLE_SPIM && (offset == DMA_SPIM_TASKS_START || offset == DMA_SPIM_TASKS_STOP)) {
+        if (trigger && offset == DMA_SPIM_TASKS_START) {
+            serial_dma_spim_run(s);
+        } else if (trigger) {
+            if (s->owner->cfg->stop_spim_ends_bus) {
+                mm_spi_bus_end((int)s->bus_index);
+            }
+            serial_event_set(s, DMA_SPIM_EVENTS_STOPPED, DMA_INT_SPIM_STOPPED);
+        }
+        return MM_TRUE;
+    }
+    if (offset == DMA_TASKS_RX_START) {
+        if (trigger && mode == ENABLE_UARTE) {
+            serial_uarte_ensure_open(s);
+            s->rx_running = MM_TRUE;
+            s->regs[DMA_RX_AMOUNT / 4u] = 0u;
+            serial_event_set(s, DMA_EVENTS_RX_READY, DMA_INT_RX_READY);
+            serial_dma_rx_try(s);
+        }
+        return MM_TRUE;
+    }
+    if (offset == DMA_TASKS_RX_STOP) {
+        /* STOP ends with RXTO only; FLUSHRX or a full buffer raises END. */
+        if (trigger && s->rx_running) {
+            serial_dma_rx_try(s);
+            s->rx_running = MM_FALSE;
+            serial_event_set(s, DMA_EVENTS_RXTO, DMA_INT_RXTO);
+        }
+        return MM_TRUE;
+    }
+    if (offset == DMA_TASKS_TX_START) {
+        if (trigger) {
+            serial_dma_tx_start(s);
+        }
+        return MM_TRUE;
+    }
+    if (offset == DMA_TASKS_TX_STOP) {
+        if (trigger) {
+            serial_event_set(s, DMA_EVENTS_TXSTOPPED, DMA_INT_TXSTOPPED);
+        }
+        return MM_TRUE;
+    }
+    if (offset == DMA_UARTE_TASKS_FLUSHRX) {
+        if (trigger && mode == ENABLE_UARTE) {
+            serial_dma_flush_rx(s);
+        }
+        return MM_TRUE;
+    }
+    if (offset >= DMA_EVENTS_FIRST && offset <= DMA_EVENTS_LAST) {
+        if (size_bytes == 4u && value == 0u) {
+            s->regs[offset / 4u] = 0u;
+        }
+        return MM_TRUE;
+    }
+    if (offset == DMA_INTEN && size_bytes == 4u) {
+        s->regs[DMA_INTENSET / 4u] = value;
+        return MM_TRUE;
+    }
+    if (offset == DMA_INTENSET && size_bytes == 4u) {
+        s->regs[DMA_INTENSET / 4u] |= value;
+        return MM_TRUE;
+    }
+    if (offset == DMA_INTENCLR && size_bytes == 4u) {
+        s->regs[DMA_INTENSET / 4u] &= ~value;
+        return MM_TRUE;
+    }
+    if (offset == DMA_RX_AMOUNT || offset == DMA_TX_AMOUNT ||
+        offset == DMA_RX_BUSERRORADDRESS || offset == DMA_TX_BUSERRORADDRESS) {
+        return MM_TRUE;
+    }
+    return MM_FALSE;
+}
+
 static mm_bool serial_is_event_reg(const struct nrf_serial_state *state, mm_u32 offset)
 {
     if (state != 0 && state->cfg != 0 && state->cfg->explicit_event_window) {
@@ -193,6 +464,13 @@ static mm_bool serial_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u3
     struct nrf_serial_inst *s = (struct nrf_serial_inst *)opaque;
     if (s == 0 || value_out == 0 || size_bytes == 0 || size_bytes > 4u) return MM_FALSE;
     if ((offset + size_bytes) > NRF_SERIAL_SIZE) return MM_FALSE;
+    if (s->owner->cfg->dma_regs) {
+        if (offset == DMA_INTEN || offset == DMA_INTENCLR) {
+            offset = DMA_INTENSET;
+        }
+        *value_out = s->regs[offset / 4u];
+        return MM_TRUE;
+    }
     if (s->owner->cfg->explicit_event_window) {
         if (serial_is_event_reg(s->owner, offset) && size_bytes == 4u) {
             *value_out = s->regs[offset / 4u];
@@ -212,6 +490,13 @@ static mm_bool serial_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u
     if (s == 0 || size_bytes == 0 || size_bytes > 4u) return MM_FALSE;
     if ((offset + size_bytes) > NRF_SERIAL_SIZE) return MM_FALSE;
 
+    if (s->owner->cfg->dma_regs && serial_dma_write(s, offset, size_bytes, value)) {
+        return MM_TRUE;
+    }
+    if (s->owner->cfg->dma_regs && offset != ENABLE) {
+        s->regs[offset / 4u] = value;
+        return MM_TRUE;
+    }
     if (offset == UARTE_TASKS_STARTRX && size_bytes == 4u) {
         if ((value & 1u) != 0u) {
             serial_uarte_ensure_open(s);
@@ -323,6 +608,7 @@ void nrf_serial_register_all(struct nrf_serial_state *state,
         reg.base = cfg->bases[i];
         reg.opaque = s;
         if (!mmio_bus_register_region(bus, &reg)) return;
+        if (cfg->single_view) continue;
         reg.base = cfg->bases[i] + 0x10000000u;
         if (!mmio_bus_register_region(bus, &reg)) return;
     }
@@ -363,7 +649,11 @@ void nrf_serial_usart_poll(struct nrf_serial_state *state)
         struct nrf_serial_inst *s = &state->serials[i];
         if (!s->has_uarte) continue;
         if (mm_uart_io_poll(&s->io)) {
-            serial_uarte_try_rx(s);
+            if (state->cfg->dma_regs) {
+                serial_dma_rx_try(s);
+            } else {
+                serial_uarte_try_rx(s);
+            }
         }
     }
 }

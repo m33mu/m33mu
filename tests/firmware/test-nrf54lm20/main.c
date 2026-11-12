@@ -14,32 +14,32 @@ extern uint32_t _estack;
 extern void __libc_init_array(void);
 
 /* GPIO P0 */
-#define GPIO_P0_BASE    0x4010A000u
-#define GPIO_OUT(b)     (*(volatile uint32_t *)((b) + 0x004u))
-#define GPIO_OUTSET(b)  (*(volatile uint32_t *)((b) + 0x008u))
-#define GPIO_OUTCLR(b)  (*(volatile uint32_t *)((b) + 0x00Cu))
-#define GPIO_DIRSET(b)  (*(volatile uint32_t *)((b) + 0x018u))
+#define GPIO_P0_BASE    0x5010A000u
+#define GPIO_OUT(b)     (*(volatile uint32_t *)((b) + 0x000u))
+#define GPIO_OUTSET(b)  (*(volatile uint32_t *)((b) + 0x004u))
+#define GPIO_OUTCLR(b)  (*(volatile uint32_t *)((b) + 0x008u))
+#define GPIO_DIRSET(b)  (*(volatile uint32_t *)((b) + 0x014u))
 
 /* UARTE00 */
-#define UARTE00_BASE      0x4004D000u
-#define UARTE_TASKS_STARTTX(b) (*(volatile uint32_t *)((b) + 0x008u))
-#define UARTE_EVENTS_ENDTX(b)  (*(volatile uint32_t *)((b) + 0x120u))
+#define UARTE00_BASE      0x5004D000u
+#define UARTE_TASKS_DMA_TX_START(b) (*(volatile uint32_t *)((b) + 0x050u))
+#define UARTE_EVENTS_DMA_TX_END(b)  (*(volatile uint32_t *)((b) + 0x168u))
 #define UARTE_ENABLE(b)        (*(volatile uint32_t *)((b) + 0x500u))
-#define UARTE_TXD_PTR(b)       (*(volatile uint32_t *)((b) + 0x544u))
-#define UARTE_TXD_MAXCNT(b)    (*(volatile uint32_t *)((b) + 0x548u))
-#define UARTE_TXD_AMOUNT(b)    (*(volatile uint32_t *)((b) + 0x54Cu))
+#define UARTE_DMA_TX_PTR(b)    (*(volatile uint32_t *)((b) + 0x73Cu))
+#define UARTE_DMA_TX_MAXCNT(b) (*(volatile uint32_t *)((b) + 0x740u))
+#define UARTE_DMA_TX_AMOUNT(b) (*(volatile uint32_t *)((b) + 0x744u))
 
 /* SPIM20 */
-#define SPIM20_BASE       0x400C6000u
-#define SPIM_TASKS_START(b) (*(volatile uint32_t *)((b) + 0x010u))
-#define SPIM_EVENTS_END(b)  (*(volatile uint32_t *)((b) + 0x118u))
+#define SPIM20_BASE       0x500C6000u
+#define SPIM_TASKS_START(b) (*(volatile uint32_t *)((b) + 0x000u))
+#define SPIM_EVENTS_END(b)  (*(volatile uint32_t *)((b) + 0x108u))
 #define SPIM_ENABLE(b)      (*(volatile uint32_t *)((b) + 0x500u))
-#define SPIM_RXD_PTR(b)     (*(volatile uint32_t *)((b) + 0x534u))
-#define SPIM_RXD_MAXCNT(b)  (*(volatile uint32_t *)((b) + 0x538u))
-#define SPIM_RXD_AMOUNT(b)  (*(volatile uint32_t *)((b) + 0x53Cu))
-#define SPIM_TXD_PTR(b)     (*(volatile uint32_t *)((b) + 0x544u))
-#define SPIM_TXD_MAXCNT(b)  (*(volatile uint32_t *)((b) + 0x548u))
-#define SPIM_TXD_AMOUNT(b)  (*(volatile uint32_t *)((b) + 0x54Cu))
+#define SPIM_RXD_PTR(b)     (*(volatile uint32_t *)((b) + 0x704u))
+#define SPIM_RXD_MAXCNT(b)  (*(volatile uint32_t *)((b) + 0x708u))
+#define SPIM_RXD_AMOUNT(b)  (*(volatile uint32_t *)((b) + 0x70Cu))
+#define SPIM_TXD_PTR(b)     (*(volatile uint32_t *)((b) + 0x73Cu))
+#define SPIM_TXD_MAXCNT(b)  (*(volatile uint32_t *)((b) + 0x740u))
+#define SPIM_TXD_AMOUNT(b)  (*(volatile uint32_t *)((b) + 0x744u))
 #define SPIM_ORC(b)         (*(volatile uint32_t *)((b) + 0x5C0u))
 
 /* RRAMC */
@@ -50,7 +50,7 @@ extern void __libc_init_array(void);
 #define RRAMC_ERASEALL(b)  (*(volatile uint32_t *)((b) + 0x540u))
 
 /* CLOCK */
-#define CLOCK_BASE         0x4010E000u
+#define CLOCK_BASE         0x5010E000u
 #define CLOCK_TASKS_XOSTART(b)   (*(volatile uint32_t *)((b) + 0x000u))
 #define CLOCK_TASKS_XOSTOP(b)    (*(volatile uint32_t *)((b) + 0x004u))
 #define CLOCK_TASKS_PLLSTART(b)  (*(volatile uint32_t *)((b) + 0x008u))
@@ -70,12 +70,12 @@ extern void __libc_init_array(void);
 #define CLOCK_LFCLK_SRCCOPY(b) (*(volatile uint32_t *)((b) + 0x450u))
 
 /* OSCILLATORS */
-#define OSC_BASE          0x40120000u
+#define OSC_BASE          0x50120000u
 #define OSC_PLL_FREQ(b)   (*(volatile uint32_t *)((b) + 0x800u))
 #define OSC_PLL_CURRENTFREQ(b) (*(volatile uint32_t *)((b) + 0x804u))
 
 /* GRTC */
-#define GRTC_BASE         0x400E2000u
+#define GRTC_BASE         0x500E2000u
 #define GRTC_TASKS_START(b) (*(volatile uint32_t *)((b) + 0x060u))
 #define GRTC_TASKS_CLEAR(b) (*(volatile uint32_t *)((b) + 0x068u))
 #define GRTC_EVENTS_COMPARE0(b) (*(volatile uint32_t *)((b) + 0x100u))
@@ -100,13 +100,13 @@ static void uarte00_init(void)
 void uarte00_putc(char c)
 {
     uarte00_txbuf = (uint8_t)c;
-    UARTE_TXD_PTR(UARTE00_BASE) = (uint32_t)&uarte00_txbuf;
-    UARTE_TXD_MAXCNT(UARTE00_BASE) = 1u;
-    UARTE_EVENTS_ENDTX(UARTE00_BASE) = 0u;
-    UARTE_TASKS_STARTTX(UARTE00_BASE) = 1u;
-    while (UARTE_EVENTS_ENDTX(UARTE00_BASE) == 0u) {
+    UARTE_DMA_TX_PTR(UARTE00_BASE) = (uint32_t)&uarte00_txbuf;
+    UARTE_DMA_TX_MAXCNT(UARTE00_BASE) = 1u;
+    UARTE_EVENTS_DMA_TX_END(UARTE00_BASE) = 0u;
+    UARTE_TASKS_DMA_TX_START(UARTE00_BASE) = 1u;
+    while (UARTE_EVENTS_DMA_TX_END(UARTE00_BASE) == 0u) {
     }
-    (void)UARTE_TXD_AMOUNT(UARTE00_BASE);
+    (void)UARTE_DMA_TX_AMOUNT(UARTE00_BASE);
 }
 
 static void gpio_cs_init(void)

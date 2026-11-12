@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * Direct-MMIO bring-up of FlexComm0 USART for printf().  Uses the SET/CLR
- * register aliases of CLKCTL0 / RSTCTL0 — same pattern the NXP MCUXpresso
+ * register aliases of CLKCTL1 / RSTCTL1 — same pattern the NXP MCUXpresso
  * SDK uses on real silicon, exercising the emulator's set/clear logic.
  */
 #include <stdint.h>
@@ -14,16 +14,16 @@ extern void __libc_init_array(void);
 extern int main(void);
 extern void _exit(int status);
 
-/* CLKCTL0 / RSTCTL0 — domain 0 */
-#define RSTCTL0_BASE     0x40000000u
-#define CLKCTL0_BASE     0x40001000u
-#define PSCCTL1_OFF      0x14u
-#define PSCCTL1_SET      0x44u   /* base + 0x40 */
-#define PSCCTL1_CLR      0x74u   /* base + 0x70 */
+/* CLKCTL1 / RSTCTL1 — FlexComm0 clock gate and reset (kCLOCK_Flexcomm0,
+ * kFC0_RST_SHIFT_RSTn in the SDK) */
+#define RSTCTL1_BASE     0x40020000u
+#define CLKCTL1_BASE     0x40021000u
+#define PSCCTL0_SET      0x40u   /* base + 0x40 */
+#define PSCCTL0_CLR      0x70u   /* base + 0x70 */
 #define FC0_CLK_BIT      8u
 
-#define CLKCTL0_PSCCTL1_SET (*(volatile uint32_t *)(CLKCTL0_BASE + PSCCTL1_SET))
-#define RSTCTL0_PRSTCTL1_CLR (*(volatile uint32_t *)(RSTCTL0_BASE + PSCCTL1_CLR))
+#define CLKCTL1_PSCCTL0_SET (*(volatile uint32_t *)(CLKCTL1_BASE + PSCCTL0_SET))
+#define RSTCTL1_PRSTCTL0_CLR (*(volatile uint32_t *)(RSTCTL1_BASE + PSCCTL0_CLR))
 
 /* FlexComm0 USART — 0x40106000 */
 #define FC0_BASE         0x40106000u
@@ -44,8 +44,8 @@ void fc0_putc(char c)
 static void fc0_init(void)
 {
     /* Enable FC0 clock and release reset */
-    CLKCTL0_PSCCTL1_SET   = (1u << FC0_CLK_BIT);
-    RSTCTL0_PRSTCTL1_CLR  = (1u << FC0_CLK_BIT);
+    CLKCTL1_PSCCTL0_SET   = (1u << FC0_CLK_BIT);
+    RSTCTL1_PRSTCTL0_CLR  = (1u << FC0_CLK_BIT);
 
     /* Select USART, enable, 8N1 */
     FC0_PSELID  = (FC0_PSELID & ~0x7u) | 1u;       /* USART */

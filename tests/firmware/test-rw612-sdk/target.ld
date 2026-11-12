@@ -1,8 +1,9 @@
-/* Minimal linker script for RW612 emulator tests */
+/* Linker script for RW612 emulator tests: a FlexSPI NOR boot image, laid out
+ * the way the boot ROM expects it (FCB at 0x400, vector table at 0x1000). */
 MEMORY
 {
-    FLASH (rx)  : ORIGIN = 0x00000000, LENGTH = 0x00040000   /* 256 KB */
-    RAM   (rwx) : ORIGIN = 0x20000000, LENGTH = 0x00080000   /* 512 KB */
+    FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 0x00200000   /* FlexSPI XIP */
+    RAM   (rwx) : ORIGIN = 0x20000000, LENGTH = 0x00130000   /* 1.2 MB SRAM */
 }
 
 _estack = ORIGIN(RAM) + LENGTH(RAM);
@@ -10,8 +11,16 @@ _sidata = LOADADDR(.data);
 
 SECTIONS
 {
+    .flash_config :
+    {
+        . = 0x400;
+        KEEP(*(.flash_conf))
+        . = 0x1000;
+    } > FLASH
+
     .isr_vector :
     {
+        _image_start = .;
         KEEP(*(.isr_vector))
     } > FLASH
 
@@ -62,3 +71,6 @@ SECTIONS
         _ebss = .;
     } > RAM
 }
+
+/* Boot ROM image header fields in the vector table (ivt.c). */
+_image_length = LOADADDR(.data) + SIZEOF(.data) - _image_start;

@@ -62,10 +62,33 @@ jobs:
         run: build/m33mu  tests/firmware/test-stm32u585/app.bin --spiflash:SPI1:file=/tmp/flash.bin:size=4096:mmap=0x60000000:cs=PB0 --tpm:SPI1:cs=PB1 --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu stm32u585 --quit-on-faults
       - name: Run STM32L5 firmware test (SPI peripherals selection)
         run: build/m33mu  tests/firmware/test-stm32l552/app.bin --spiflash:SPI1:file=/tmp/flash.bin:size=4096:mmap=0x60000000:cs=PB0 --tpm:SPI1:cs=PB1 --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu stm32l552 --quit-on-faults
+      - name: Run STM32WBA55 firmware test (RCC/PWR/USART1/flash, non-secure)
+        run: build/m33mu --cpu stm32wba55 --no-tz tests/firmware/test-stm32wba55/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+      - name: Run STM32U385 firmware test (RCC/PWR/ICACHE/USART1/flash, non-secure)
+        run: build/m33mu --cpu stm32u385 --no-tz tests/firmware/test-stm32u385/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+      - name: Run STM32C5A3 firmware test (RCC/ICACHE/USART2/flash/option bytes)
+        run: build/m33mu --cpu stm32c5a3 --dualbank tests/firmware/test-stm32c5a3/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
       - name: Run nRF5340 firmware test (SPI flash read/write)
         run: build/m33mu  tests/firmware/test-nrf5340/app.bin --spiflash:SPI0:file=/tmp/flash.bin:size=4096:mmap=0x60000000:cs=PB0 --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu nrf5340 --quit-on-faults
+      - name: Run nRF5340 network core firmware test (LFCLK, RTC0, IPC, NVMC, UARTE0)
+        run: build/m33mu --cpu nrf5340net tests/firmware/test-nrf5340net/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+      - name: Run MCXA153 firmware test (FRO96M clocking, ROM API flash, LPUART0)
+        run: build/m33mu --cpu mcxa153 --no-tz tests/firmware/test-mcxa153/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
       - name: Run nRF54LM20 firmware test
         run: build/m33mu  tests/firmware/test-nrf54lm20/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu nrf54lm20 --quit-on-faults
+      - name: Run nRF54L15 / nRF54LM20 wolfBoot HAL sequence tests
+        run: |
+          build/m33mu tests/firmware/test-nrf54l/app-nrf54l15.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu nrf54l15 --quit-on-faults
+          build/m33mu tests/firmware/test-nrf54l/app-nrf54lm20.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu nrf54lm20 --quit-on-faults
+      - name: Run MCXW71 FMU0 flash firmware test
+        run: |
+          set -euo pipefail
+          build/m33mu --cpu mcxw71c --uart-stdout --expect-bkpt 0x7f \
+            --timeout 60 --quit-on-faults \
+            tests/firmware/test-mcxw-flash/app.bin < /dev/null | tee /tmp/m33mu-mcxw-flash.log
+          grep -q "ALL PASS" /tmp/m33mu-mcxw-flash.log
+      - name: Run PSOC Control C3M6 firmware test (SCB UART, PERI_PCLK, boot ROM flash API)
+        run: build/m33mu tests/firmware/test-psc3m6/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu psc3m6 --quit-on-faults
       - name: Run STM32H5 firmware test (Floating point instructions)
         run: build/m33mu tests/firmware/test-fpu-instructions/app.bin --uart-stdout --expect-bkpt 0x7f --timeout 60 --quit-on-faults
       - name: Run RTOS exception firmware test
@@ -341,3 +364,23 @@ jobs:
               tests/firmware/test-imxrt700/$t.bin < /dev/null | tee /tmp/m33mu-imxrt700-$t.log
             grep -q "ALL PASS" /tmp/m33mu-imxrt700-$t.log
           done
+      - name: Run RW612 firmware tests (FlexSPI boot, ROM API, ELS/PKA)
+        # Booted like the ROM does: FCB at 0x400, XIP image at 0x1000. The
+        # FlexSPI test replays wolfBoot's ROM API program/erase sequence.
+        run: |
+          set -euo pipefail
+          for t in test_uart test_flexspi test_els test_pka; do
+            build/m33mu \
+              --cpu rw612 \
+              --uart-stdout \
+              --expect-bkpt 0x7f \
+              --timeout 60 \
+              --quit-on-faults \
+              tests/firmware/test-rw612-sdk/$t.bin < /dev/null | tee /tmp/m33mu-rw612-$t.log
+            grep -q "ALL PASS" /tmp/m33mu-rw612-$t.log
+          done
+          # A0 silicon: the ROM API tree moves to 0x13024100; only CHIP_INFO[3:0] counts.
+          M33MU_RW612_CHIP_REV=0x10 build/m33mu --cpu rw612 --uart-stdout --expect-bkpt 0x7f \
+            --timeout 60 --quit-on-faults tests/firmware/test-rw612-sdk/test_flexspi.bin < /dev/null \
+            | tee /tmp/m33mu-rw612-a0.log
+          grep -q "ALL PASS" /tmp/m33mu-rw612-a0.log

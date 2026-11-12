@@ -15,7 +15,7 @@ extern void __libc_init_array(void);
 
 /* MRCC */
 #define MRCC_BASE        0x4001C000u
-#define MRCC_LPUART0     0xE0u
+#define MRCC_LPUART1     0xE4u
 #define MRCC_LPSPI0      0xD8u
 #define MRCC_LPIT0       0xBCu
 #define MRCC_PORTA       0x108u
@@ -38,8 +38,8 @@ static inline void mrcc_enable(uint32_t off)
 #define GPIO_PCOR(b)     (*(volatile uint32_t *)((b) + 0x48u))
 #define GPIO_PDDR(b)     (*(volatile uint32_t *)((b) + 0x54u))
 
-/* LPUART0 */
-#define LPUART0_BASE     0x40038000u
+/* LPUART1, the FRDM-MCXW71 console */
+#define LPUART1_BASE     0x40039000u
 #define LPUART_STAT(b)   (*(volatile uint32_t *)((b) + 0x14u))
 #define LPUART_CTRL(b)   (*(volatile uint32_t *)((b) + 0x18u))
 #define LPUART_DATA(b)   (*(volatile uint32_t *)((b) + 0x1Cu))
@@ -68,17 +68,17 @@ static inline void mrcc_enable(uint32_t off)
 
 volatile uint32_t systick_ms = 0;
 
-static void lpuart0_init(void)
+static void lpuart1_init(void)
 {
-    mrcc_enable(MRCC_LPUART0);
-    LPUART_CTRL(LPUART0_BASE) = LPUART_CTRL_TE;
+    mrcc_enable(MRCC_LPUART1);
+    LPUART_CTRL(LPUART1_BASE) = LPUART_CTRL_TE;
 }
 
-void lpuart0_putc(char c)
+void lpuart1_putc(char c)
 {
-    while ((LPUART_STAT(LPUART0_BASE) & LPUART_STAT_TDRE) == 0u) {
+    while ((LPUART_STAT(LPUART1_BASE) & LPUART_STAT_TDRE) == 0u) {
     }
-    LPUART_DATA(LPUART0_BASE) = (uint32_t)c;
+    LPUART_DATA(LPUART1_BASE) = (uint32_t)c;
 }
 
 static void gpio_cs_init(void)
@@ -135,7 +135,7 @@ int main(void)
 {
     uint8_t id0, id1, id2;
 
-    lpuart0_init();
+    lpuart1_init();
     gpio_cs_init();
     spi0_init();
     __asm volatile("cpsie i");
