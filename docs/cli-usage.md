@@ -194,11 +194,18 @@ Replay recorded voltage traces onto GPIO inputs. See
   `--secwm1=0:47 --secwm2=0:127`: bootloader secure, boot partition non-secure so
   the application can run, bank 2 secure for the update partition at
   `0x0C100000`.
+
+  On stm32l552 the pages are 0..127 per bank and the filter is always on while
+  `OPTR.TZEN` is set. Out of reset bank 1 is secure in full and bank 2 holds no
+  secure page, the provisioning wolfBoot documents for its STM32L5 TrustZone
+  configurations. The L5 filter refuses only non-secure transactions (read as
+  zero, writes and non-secure erases ignored); secure software may read a
+  non-secure page.
 - `--dualbank`: enable STM32 dual-bank flash behavior
 - `--persist`: write modified flash contents back to the original input BINs when supported
 - `--flash-trace <file>`: append one line per flash operation (program, erase, mass erase, or a bulk rewrite such as a bank swap) to `file`: `P <addr> <value>` (value little-endian, two hex digits per byte), `E <addr> #<len>`, `M <addr>`, `B <addr> #<len>`, and for an option byte change the firmware makes, `O <NAME>=<value> ...` with every option byte after it. Addresses are flash base plus offset. Works on every target whose flash is writable, without per-target support: each port already reports the ranges it changes for `--persist`, and the kind is read from the array (a range of 32 bytes or more left all 0xFF is an erase).
   Programs and erases the chip starts but does not carry out are operations too, which change nothing: `X <addr> <wanted> <old>` for a program the chip's rules refuse (on STM32H5, a program over a word that is not erased), `W <addr>` for a program or erase of write-protected flash. They are counted at the end of the run.
-- `--optbyte NAME=VALUE`: set an option byte as the device ships, before it boots; may be repeated. The names are the target's (an unknown name lists them). STM32H5: `SWAP_BANK`, `WRPSG1`, `WRPSG2` (bit N cleared write-protects sectors 4N..4N+3 of that bank, as on the chip), `SECWM1`, `SECWM2` (raw register values; `--secwm1/2` is the friendlier form). Option bytes stay outside the flash image, which keeps only the flash array.
+- `--optbyte NAME=VALUE`: set an option byte as the device ships, before it boots; may be repeated. The names are the target's (an unknown name lists them). STM32H5: `SWAP_BANK`, `WRPSG1`, `WRPSG2` (bit N cleared write-protects sectors 4N..4N+3 of that bank, as on the chip), `SECWM1`, `SECWM2` (raw register values; `--secwm1/2` is the friendlier form). STM32L552: `OPTR` (the whole register; `DBANK` and `SWAP_BANK` keep following the modelled geometry and swap), `SECWM1`, `SECWM2` (raw `SECWMxR1` values). Option bytes stay outside the flash image, which keeps only the flash array.
 - `--flash-cut <n>`: cut the power just before flash operation `n` (counted from 0, as in the trace). The operation does not happen, the array keeps what it held, and the run stops with exit status 3. With `--persist` the image files are left in that state, so the same command line without `--flash-cut` powers the device up from the cut: a power-loss test in two runs.
 - `--flash-cut-erase <addr>`: cut the power just before the first erase that covers bus address `addr`.
 - `--flash-timing none|typical|max`: make flash erases and programs take the time the datasheet gives them (default `none`: instant). The core stands still meanwhile, as it fetches from that flash, while SysTick, timers and watchdogs keep counting, so a watchdog shorter than a sector erase resets the chip as on silicon. Program time counts per started program unit, erase time per started erase unit (bank and mass erases are that sum). Trace lines then end with `@<us>`. Data exists for `stm32h563` (DS14258 table 51: 31/100 us per 128 bits, 2/10 ms per 8 KB sector); other targets warn and take no time.
@@ -218,5 +225,6 @@ Replay recorded voltage traces onto GPIO inputs. See
 - `M33MU_SLEEP_TRACE=1`
 - `M33MU_PROT_TRACE=1..3`
 - `M33MU_STM32H5_IDCODE=<hex|decimal>`: replace the STM32H5 DBGMCU_IDCODE value (e.g. `0x10016484`)
+- `M33MU_STM32L5_OPTR=<hex|decimal>`: the STM32L552 `FLASH_OPTR` the part powers up with (default `0x9F4F70AA`: TZEN=1, DBANK=1, RDP level 0); `--optbyte OPTR=` overrides it
 
 See [m33mu.1](/home/dan/src/m33mu/m33mu.1) for full descriptions and examples.

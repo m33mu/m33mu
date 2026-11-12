@@ -56,6 +56,7 @@
 #include "stm32h5f4/stm32h5f4_mmio.h"
 #include "stm32h5_mmio.h"
 #include "stm32n657/stm32n657_mmio.h"
+#include "stm32l552/stm32l552_mmio.h"
 #ifdef M33MU_HAS_ONNXRUNTIME
 #include "npu_onnx.h"
 #endif
@@ -5429,16 +5430,31 @@ int main(int argc, char **argv)
                                         0u);
             }
             if (opt_secwm_set[0] || opt_secwm_set[1]) {
-                if (cpu_name == 0 || strncmp(cpu_name, "stm32h5", 7) != 0) {
-                    fprintf(stderr, "--secwm1/--secwm2 are only supported on stm32h5 targets\n");
+                int wb;
+                if (cpu_name != 0 && strcmp(cpu_name, "stm32l552") == 0) {
+                    for (wb = 0; wb < 2; ++wb) {
+                        if (!opt_secwm_set[wb]) {
+                            continue;
+                        }
+                        if (opt_secwm_strt[wb] > 0x7Fu || opt_secwm_end[wb] > 0x7Fu) {
+                            fprintf(stderr, "--secwm%d: stm32l552 pages are 0..127\n", wb + 1);
+                            rc = 1;
+                            goto cleanup;
+                        }
+                        mm_stm32l552_flash_set_secwm(wb, opt_secwm_strt[wb], opt_secwm_end[wb]);
+                    }
+                } else if (cpu_name == 0 || strncmp(cpu_name, "stm32h5", 7) != 0) {
+                    fprintf(stderr, "--secwm1/--secwm2 are only supported on stm32h5 and stm32l552 targets\n");
                     rc = 1;
                     goto cleanup;
                 }
-                if (opt_secwm_set[0]) {
-                    stm32h5_flash_set_secwm(0, opt_secwm_strt[0], opt_secwm_end[0]);
-                }
-                if (opt_secwm_set[1]) {
-                    stm32h5_flash_set_secwm(1, opt_secwm_strt[1], opt_secwm_end[1]);
+                if (cpu_name != 0 && strncmp(cpu_name, "stm32h5", 7) == 0) {
+                    if (opt_secwm_set[0]) {
+                        stm32h5_flash_set_secwm(0, opt_secwm_strt[0], opt_secwm_end[0]);
+                    }
+                    if (opt_secwm_set[1]) {
+                        stm32h5_flash_set_secwm(1, opt_secwm_strt[1], opt_secwm_end[1]);
+                    }
                 }
             }
             if (!mm_execution_state_register_target_mmio(&execution)) {

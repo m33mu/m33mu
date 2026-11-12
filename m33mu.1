@@ -368,6 +368,13 @@ and
 .B SECWM1
 and
 .BR SECWM2 .
+On STM32L552:
+.B OPTR
+(DBANK and SWAP_BANK keep following the modelled geometry and swap),
+.B SECWM1
+and
+.B SECWM2
+(raw SECWMxR1 values).
 Option bytes are kept apart from the flash image.
 .TP
 .BR --flash-cut " " n
@@ -453,6 +460,12 @@ wolfBoot's stm32h5 TrustZone layout, for example, is
 bootloader secure, boot partition non\-secure so the application can run, bank 2
 secure for the update partition at
 .IR 0x0C100000 .
+
+On stm32l552 the pages are 0..127 per bank and the filter is always on while
+OPTR.TZEN is set. Out of reset bank 1 is secure in full and bank 2 holds no
+secure page, the provisioning wolfBoot documents for its STM32L5 TrustZone
+configurations. The L5 filter refuses only non\-secure transactions; secure
+software may read a non\-secure page.
 .TP
 .BR --boot " " flash|ram|spiflash
 Select the boot source.
@@ -693,6 +706,10 @@ Values 1 through 3 increase verbosity.
 .TP
 .B M33MU_STM32H5_IDCODE
 Replace the STM32H5 DBGMCU_IDCODE value (hex with 0x, or decimal).
+.TP
+.B M33MU_STM32L5_OPTR
+The STM32L552 FLASH_OPTR value the part powers up with (hex with 0x, or decimal).
+The default, 0x9F4F70AA, is TZEN=1, DBANK=1, RDP level 0.
 .SH EXAMPLES
 .TP
 .B m33mu tests/firmware/test-stm32h563/app.bin

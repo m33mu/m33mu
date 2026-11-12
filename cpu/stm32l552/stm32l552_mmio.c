@@ -41,6 +41,8 @@
 #include "m33mu/nvic.h"
 #include "m33mu/spi_bus.h"
 #include "m33mu/host_rng.h"
+#include "m33mu/optbytes.h"
+#include "m33mu/target_hal.h"
 #include "stm32_crypto.h"
 #include "stm32_gpio.h"
 #include "stm32h5_i2c.h"
@@ -281,6 +283,9 @@ extern void mm_system_request_reset(void);
 #define MPCBB_CR_OFFSET      0x000u
 #define MPCBB_SECCFGR_OFFSET 0x100u
 #define MPCBB_CR_INVSECSTATE (1u << 30)
+#define MPCBB_CR_LCK         (1u << 0)
+#define MPCBB_LCKVTR1_OFFSET 0x010u
+#define MPCBB_LCKVTR2_OFFSET 0x014u
 
 /* FLASH register offsets */
 #define FLASH_ACR      0x000u
@@ -293,12 +298,20 @@ extern void mm_system_request_reset(void);
 #define FLASH_NSCCR    0x030u
 #define FLASH_SECCCR   0x034u
 #define FLASH_OPTR     0x040u
+#define FLASH_SECWM1R1 0x050u
+#define FLASH_SECWM1R2 0x054u
+#define FLASH_SECWM2R1 0x060u
+#define FLASH_SECWM2R2 0x064u
+#define FLASH_SECBB1R1 0x080u /* SECBB1R1..R4, 0x80..0x8C */
+#define FLASH_SECBB2R1 0x0a0u /* SECBB2R1..R4, 0xA0..0xAC */
+#define FLASH_SECBB_NREGS 4u
 
 #define FLASH_KEY1 0x45670123u
 #define FLASH_KEY2 0xCDEF89ABu
 
 #define FLASH_FLAG_EOP    (1u << 0)
 #define FLASH_FLAG_PGSERR (1u << 7)
+#define FLASH_SR_W1C_MASK 0x000020FBu
 #define FLASH_FLAG_BSY    (1u << 16)
 
 #define FLASH_CR_PG        (1u << 0)
@@ -317,6 +330,18 @@ extern void mm_system_request_reset(void);
 #define FLASH_CR_BKSEL     (1u << 31)
 #define FLASH_OPTR_SWAP_BANK (1u << 20)
 #define FLASH_OPTR_DBANK (1u << 22)
+#define FLASH_OPTR_TZEN  (1u << 31)
+
+/* A TrustZone-provisioned part at RDP level 0: TZEN, PA15_PUPEN, nBOOT0,
+ * nSWBOOT0, SRAM2_RST, SRAM2_PE, DBANK, WWDG_SW, IWDG_STDBY/STOP/SW,
+ * nRST_SHDW/STDBY/STOP set, BOR_LEV 0, RDP 0xAA. */
+#define FLASH_OPTR_RESET 0x9F4F70AAu
+
+/* SECWMxR1: PSTRT in [6:0], PEND in [22:16]; pages PSTRT..PEND are secure. */
+#define FLASH_SECWM_PAGE_MASK 0x7fu
+#define FLASH_SECWM_PEND_SHIFT 16
+#define FLASH_SECWM_ALL  (FLASH_SECWM_PAGE_MASK << FLASH_SECWM_PEND_SHIFT)
+#define FLASH_SECWM_NONE FLASH_SECWM_PAGE_MASK
 
 struct rcc_state {
     mm_u32 regs[RCC_SIZE / 4];
@@ -374,6 +399,12 @@ struct flash_state {
     mm_u8 sec_key_stage;
     mm_bool dualbank_enabled;
     mm_bool swap_active;
+    struct mm_memmap *map;
+};
+
+struct mpcbb_alias {
+    struct mpcbb_state *state;
+    mm_bool secure_alias;
 };
 
 /* L552 has legacy DMA, keep simple register block for now */
@@ -396,6 +427,8 @@ static void rcc_update_sysclk(struct rcc_state *r);
 static void pwr_update_vos(struct pwr_state *p);
 static void mpcbb_init_defaults(void);
 static void flash_sync_option_regs(struct flash_state *f);
+static void flash_optbytes_load(void);
+static mm_bool flash_tz_enabled(void);
 
 static struct rcc_state rcc;
 static struct pwr_state pwr;
@@ -415,6 +448,7 @@ static struct simple_blk icache_sec;
 static struct ucpd_state ucpd1_state;
 static struct ucpd_state ucpd1_state_sec;
 static struct mpcbb_state mpcbb[2];
+static struct mpcbb_alias mpcbb_alias[4];
 static struct rng_state rng;
 static struct hash_state hash_accel;
 static struct aes_state aes_accel;
@@ -493,7 +527,14 @@ static struct mm_nvic *g_exti_nvic = 0;
 static struct mm_nvic *g_wdg_nvic = 0;
 
 #define RNG_IRQ 94
-static const mm_u32 mpcbb_words[] = { 32u, 32u };
+/* VCTR words: SRAM1 192 KB and SRAM2 64 KB in 256-byte blocks. */
+static const mm_u32 mpcbb_words[] = { 24u, 8u };
+
+/* Option bytes survive a system reset, so they live outside flash_ctl. */
+static mm_bool g_optbytes_loaded = MM_FALSE;
+static mm_u32 g_optr;
+static mm_u32 g_secwm_r1[2];
+static mm_u32 g_secwm_r2[2];
 
 static mm_u32 stm32l552_gpio_bank_read(void *opaque, int bank);
 static mm_u32 stm32l552_gpio_bank_read_moder(void *opaque, int bank);
@@ -780,6 +821,92 @@ mm_u32 *mm_stm32l552_tzsc_regs(void)
     return tzsc_s.regs;
 }
 
+/* Non-secure aliases of the peripherals whose TZSC_SECCFGR2 bit the model
+ * enforces: a Non-secure access to one configured Secure faults. */
+static const struct {
+    mm_u32 base;
+    mm_u32 size;
+    mm_u32 bit;
+} tzsc_periph[] = {
+    { AES_BASE,  AES_SIZE,  TZSC_AESSEC_BIT },
+    { HASH_BASE, HASH_SIZE, TZSC_HASHSEC_BIT },
+    { RNG_BASE,  RNG_SIZE,  TZSC_RNGSEC_BIT },
+    { PKA_BASE,  PKA_SIZE,  TZSC_PKASEC_BIT }
+};
+
+mm_bool mm_stm32l552_tz_attr_for_addr(mm_u32 addr,
+                                      enum mm_sau_attr *attr_out,
+                                      mm_u32 *region_out)
+{
+    size_t i;
+
+    if (attr_out == 0 || addr < AES_BASE || addr >= PKA_BASE + PKA_SIZE) {
+        return MM_FALSE;
+    }
+    if (!flash_tz_enabled()) {
+        return MM_FALSE;
+    }
+    for (i = 0; i < sizeof(tzsc_periph) / sizeof(tzsc_periph[0]); ++i) {
+        if (addr - tzsc_periph[i].base >= tzsc_periph[i].size) {
+            continue;
+        }
+        if (!tzsc_requires_secure(&tzsc_s, tzsc_periph[i].bit)) {
+            return MM_FALSE;
+        }
+        if (region_out != 0) {
+            *region_out = 0u;
+        }
+        *attr_out = MM_SAU_SECURE;
+        return MM_TRUE;
+    }
+    return MM_FALSE;
+}
+
+void mm_stm32l552_flash_set_secwm(int bank, mm_u32 strt, mm_u32 end)
+{
+    if (bank < 0 || bank > 1) {
+        return;
+    }
+    flash_optbytes_load();
+    g_secwm_r1[bank] = (strt & FLASH_SECWM_PAGE_MASK) |
+        ((end & FLASH_SECWM_PAGE_MASK) << FLASH_SECWM_PEND_SHIFT);
+    flash_sync_option_regs(&flash_ctl);
+}
+
+/* Option bytes by name (m33mu/optbytes.h); a change takes effect at once. */
+static mm_u32 optb_optr_get(void)
+{
+    flash_optbytes_load();
+    return g_optr;
+}
+
+static mm_bool optb_optr_set(mm_u32 value)
+{
+    flash_optbytes_load();
+    g_optr = value;
+    flash_sync_option_regs(&flash_ctl);
+    return MM_TRUE;
+}
+
+static mm_u32 optb_secwm1_get(void) { flash_optbytes_load(); return g_secwm_r1[0]; }
+static mm_u32 optb_secwm2_get(void) { flash_optbytes_load(); return g_secwm_r1[1]; }
+
+static mm_bool optb_secwm1_set(mm_u32 value)
+{
+    flash_optbytes_load();
+    g_secwm_r1[0] = value;
+    flash_sync_option_regs(&flash_ctl);
+    return MM_TRUE;
+}
+
+static mm_bool optb_secwm2_set(mm_u32 value)
+{
+    flash_optbytes_load();
+    g_secwm_r1[1] = value;
+    flash_sync_option_regs(&flash_ctl);
+    return MM_TRUE;
+}
+
 
 mm_bool mm_stm32l552_mpcbb_block_secure(int bank, mm_u32 block_index)
 {
@@ -1036,16 +1163,65 @@ static void flash_set_swap_state(struct flash_state *f, mm_bool swap_active)
     flash_apply_bank_swap(f);
 }
 
+static void flash_optbytes_load(void)
+{
+    const char *env;
+    char *endp = 0;
+    unsigned long v;
+
+    if (g_optbytes_loaded) {
+        return;
+    }
+    g_optbytes_loaded = MM_TRUE;
+    g_optr = FLASH_OPTR_RESET;
+    /* Bank 1 secure, bank 2 non-secure: wolfBoot's documented provisioning. */
+    g_secwm_r1[0] = FLASH_SECWM_ALL;
+    g_secwm_r1[1] = FLASH_SECWM_NONE;
+    g_secwm_r2[0] = 0u;
+    g_secwm_r2[1] = 0u;
+    env = getenv("M33MU_STM32L5_OPTR");
+    if (env == 0 || env[0] == '\0') {
+        return;
+    }
+    v = strtoul(env, &endp, 0);
+    if (endp == env || *endp != '\0' || v > 0xFFFFFFFFul) {
+        fprintf(stderr, "[FLASH] ignoring invalid M33MU_STM32L5_OPTR=%s\n", env);
+        return;
+    }
+    g_optr = (mm_u32)v;
+}
+
+/* TZEN=0, or a session run with TrustZone disabled (--no-tz). */
+static mm_bool flash_tz_enabled(void)
+{
+    const struct mm_target_cfg *cfg = mm_target_current_cfg();
+
+    flash_optbytes_load();
+    if ((g_optr & FLASH_OPTR_TZEN) == 0u) {
+        return MM_FALSE;
+    }
+    return (cfg == 0 || cfg->tz_attr_for_addr != 0) ? MM_TRUE : MM_FALSE;
+}
+
 static void flash_sync_option_regs(struct flash_state *f)
 {
     mm_u32 val;
     if (f == 0) {
         return;
     }
+    flash_optbytes_load();
     if (!f->dualbank_enabled) {
         f->swap_active = MM_FALSE;
     }
-    val = f->regs[FLASH_OPTR / 4u];
+    f->regs[FLASH_SECWM1R1 / 4u] = g_secwm_r1[0];
+    f->regs[FLASH_SECWM1R2 / 4u] = g_secwm_r2[0];
+    f->regs[FLASH_SECWM2R1 / 4u] = g_secwm_r1[1];
+    f->regs[FLASH_SECWM2R2 / 4u] = g_secwm_r2[1];
+    /* DBANK and SWAP_BANK follow the modelled flash geometry and bank swap. */
+    val = g_optr;
+    if (!flash_tz_enabled()) {
+        val &= ~FLASH_OPTR_TZEN;
+    }
     val &= ~(FLASH_OPTR_SWAP_BANK | FLASH_OPTR_DBANK);
     if (f->swap_active) {
         val |= FLASH_OPTR_SWAP_BANK;
@@ -1069,6 +1245,85 @@ static mm_u32 flash_sector_size(void)
     }
     return (sector_count == 0u) ? 0u
         : ((flash_ctl.flash_size / banks) / sector_count);
+}
+
+/* Watermark or SECBB: the bank index is physical, whatever SWAP_BANK says. */
+static mm_bool flash_page_secure(const struct flash_state *f, mm_u32 offset)
+{
+    mm_u32 banks = flash_bank_count(f);
+    mm_u32 page_size = flash_sector_size();
+    mm_u32 bank_size;
+    mm_u32 bank;
+    mm_u32 page;
+    mm_u32 wm;
+    mm_u32 strt;
+    mm_u32 end;
+    mm_u32 bb;
+
+    if (f->flash_size == 0u || page_size == 0u || banks == 0u ||
+        offset >= f->flash_size) {
+        return MM_FALSE;
+    }
+    bank_size = f->flash_size / banks;
+    if (bank_size == 0u) {
+        return MM_FALSE;
+    }
+    bank = offset / bank_size;
+    if (f->swap_active) {
+        bank ^= 1u;
+    }
+    page = (offset % bank_size) / page_size;
+    wm = f->regs[((bank != 0u) ? FLASH_SECWM2R1 : FLASH_SECWM1R1) / 4u];
+    strt = wm & FLASH_SECWM_PAGE_MASK;
+    end = (wm >> FLASH_SECWM_PEND_SHIFT) & FLASH_SECWM_PAGE_MASK;
+    if (page >= strt && page <= end) {
+        return MM_TRUE;
+    }
+    if ((page / 32u) >= FLASH_SECBB_NREGS) {
+        return MM_FALSE;
+    }
+    bb = f->regs[(((bank != 0u) ? FLASH_SECBB2R1 : FLASH_SECBB1R1) +
+                  4u * (page / 32u)) / 4u];
+    return ((bb >> (page % 32u)) & 1u) != 0u ? MM_TRUE : MM_FALSE;
+}
+
+static mm_bool flash_range_secure(const struct flash_state *f, mm_u32 offset, mm_u32 length)
+{
+    mm_u32 page_size = flash_sector_size();
+    mm_u32 off;
+
+    if (page_size == 0u || length == 0u) {
+        return MM_FALSE;
+    }
+    for (off = offset - (offset % page_size); off < offset + length; off += page_size) {
+        if (flash_page_secure(f, off)) {
+            return MM_TRUE;
+        }
+    }
+    return MM_FALSE;
+}
+
+/* Only Non-secure transactions are filtered: wolfBoot's L5 TrustZone flow reads
+ * its non-secure update partition with SAU-secure transactions. */
+static enum mm_flash_tz_attr flash_page_tz_cb(void *opaque, mm_u32 byte_offset)
+{
+    const struct flash_state *f = (const struct flash_state *)opaque;
+
+    if (f == 0 || !flash_tz_enabled()) {
+        return MM_FLASH_TZ_UNFILTERED;
+    }
+    return flash_page_secure(f, byte_offset) ? MM_FLASH_TZ_SECURE
+                                             : MM_FLASH_TZ_UNFILTERED;
+}
+
+static enum mm_sec_state flash_bus_attr(mm_u32 addr, mm_u32 alias_base)
+{
+    const struct mm_memmap *map = flash_ctl.map;
+
+    if (map != 0 && map->bus_attr != 0) {
+        return map->bus_attr(map->bus_attr_opaque, addr);
+    }
+    return (alias_base == flash_ctl.base_ns) ? MM_NONSECURE : MM_SECURE;
 }
 
 static void flash_set_busy(mm_u32 reg_offset, mm_bool busy)
@@ -1184,6 +1439,11 @@ static void flash_apply_erase(mm_u32 cr_off, mm_u32 sr_off)
                (unsigned long)start,
                (unsigned long)length);
     }
+    if (cr_off == FLASH_NSCR && flash_tz_enabled() &&
+        flash_range_secure(&flash_ctl, start, length)) {
+        /* Non-secure erase touching a secure page: nothing erased. */
+        return;
+    }
     flash_set_busy(sr_off, MM_TRUE);
     memset(flash_ctl.flash + start, 0xFF, length);
     flash_set_busy(sr_off, MM_FALSE);
@@ -1227,6 +1487,11 @@ static mm_bool flash_write_cb(void *opaque, enum mm_sec_state sec, mm_u32 addr, 
                (unsigned long)addr,
                (unsigned long)size_bytes,
                (unsigned long)value);
+    }
+    if (flash_tz_enabled() && flash_page_secure(&flash_ctl, offset) &&
+        flash_bus_attr(addr, base) == MM_NONSECURE) {
+        /* Non-secure write to a secure page: ignored. */
+        return MM_TRUE;
     }
     if (!flash_is_unlocked(cr_off)) {
         return MM_TRUE;
@@ -1466,19 +1731,59 @@ static mm_bool simple_blk_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, 
 
 static mm_bool mpcbb_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 *value_out)
 {
-    struct mpcbb_state *b = (struct mpcbb_state *)opaque;
+    struct mpcbb_state *b = ((struct mpcbb_alias *)opaque)->state;
     if (value_out == 0 || size_bytes == 0 || size_bytes > 4) return MM_FALSE;
     if ((offset + size_bytes) > MPCBB_SIZE) return MM_FALSE;
     memcpy(value_out, (mm_u8 *)b->regs + offset, size_bytes);
     return MM_TRUE;
 }
 
+static mm_bool mpcbb_vctr_locked(const struct mpcbb_state *b, mm_u32 offset)
+{
+    mm_u32 sb;
+
+    if (offset < MPCBB_SECCFGR_OFFSET) {
+        return MM_FALSE;
+    }
+    sb = (offset - MPCBB_SECCFGR_OFFSET) / 4u;
+    if (sb < 32u) {
+        return ((b->regs[MPCBB_LCKVTR1_OFFSET / 4u] >> sb) & 1u) != 0u;
+    }
+    if (sb < 64u) {
+        return ((b->regs[MPCBB_LCKVTR2_OFFSET / 4u] >> (sb - 32u)) & 1u) != 0u;
+    }
+    return MM_FALSE;
+}
+
 static mm_bool mpcbb_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 value)
 {
-    struct mpcbb_state *b = (struct mpcbb_state *)opaque;
+    const struct mpcbb_alias *a = (const struct mpcbb_alias *)opaque;
+    struct mpcbb_state *b = a->state;
+    mm_u32 word = offset & ~3u;
+    mm_u32 cur;
+    mm_u32 next;
+
     if (size_bytes == 0 || size_bytes > 4) return MM_FALSE;
     if ((offset + size_bytes) > MPCBB_SIZE) return MM_FALSE;
-    memcpy((mm_u8 *)b->regs + offset, &value, size_bytes);
+    if ((offset & 3u) + size_bytes > 4u) return MM_FALSE;
+    /* Block attribution is programmed through the secure alias only. */
+    if (!a->secure_alias || mmio_active_sec() != MM_SECURE) {
+        return MM_TRUE;
+    }
+    cur = b->regs[word / 4u];
+    next = cur;
+    memcpy((mm_u8 *)&next + (offset & 3u), &value, size_bytes);
+    if (word == MPCBB_CR_OFFSET || word == MPCBB_LCKVTR1_OFFSET ||
+        word == MPCBB_LCKVTR2_OFFSET) {
+        if ((b->regs[MPCBB_CR_OFFSET / 4u] & MPCBB_CR_LCK) != 0u) {
+            return MM_TRUE;
+        }
+        /* CR.LCK and the superblock lock bits clear only on reset. */
+        next |= (word == MPCBB_CR_OFFSET) ? (cur & MPCBB_CR_LCK) : cur;
+    } else if (mpcbb_vctr_locked(b, word)) {
+        return MM_TRUE;
+    }
+    b->regs[word / 4u] = next;
     return MM_TRUE;
 }
 
@@ -1524,6 +1829,21 @@ static mm_bool flash_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32
     return MM_TRUE;
 }
 
+static mm_bool flash_reg_secure_only(mm_u32 offset)
+{
+    mm_u32 word = offset & ~3u;
+
+    if (word == FLASH_SECWM1R1 || word == FLASH_SECWM1R2 ||
+        word == FLASH_SECWM2R1 || word == FLASH_SECWM2R2) {
+        return MM_TRUE;
+    }
+    if (word >= FLASH_SECBB1R1 && word < FLASH_SECBB1R1 + 4u * FLASH_SECBB_NREGS) {
+        return MM_TRUE;
+    }
+    return (word >= FLASH_SECBB2R1 && word < FLASH_SECBB2R1 + 4u * FLASH_SECBB_NREGS)
+        ? MM_TRUE : MM_FALSE;
+}
+
 static mm_bool flash_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 value)
 {
     struct flash_state *f = (struct flash_state *)opaque;
@@ -1547,8 +1867,31 @@ static mm_bool flash_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u3
         } else {
             new_val &= ~FLASH_OPTR_DBANK;
         }
-        f->regs[FLASH_OPTR / 4u] = new_val;
+        /* TZEN is provisioned (M33MU_STM32L5_OPTR, --optbyte OPTR=), not
+         * changed by firmware. */
+        new_val = (new_val & ~FLASH_OPTR_TZEN) | (g_optr & FLASH_OPTR_TZEN);
+        g_optr = new_val;
         flash_set_swap_state(f, (new_val & FLASH_OPTR_SWAP_BANK) != 0u);
+        flash_sync_option_regs(f);
+        return MM_TRUE;
+    }
+
+    if (flash_reg_secure_only(offset)) {
+        /* Secure watermarks and SECBB are programmed by Secure software only. */
+        if (mmio_active_sec() != MM_SECURE) {
+            return MM_TRUE;
+        }
+        memcpy((mm_u8 *)f->regs + offset, &value, size_bytes);
+        g_secwm_r1[0] = f->regs[FLASH_SECWM1R1 / 4u];
+        g_secwm_r2[0] = f->regs[FLASH_SECWM1R2 / 4u];
+        g_secwm_r1[1] = f->regs[FLASH_SECWM2R1 / 4u];
+        g_secwm_r2[1] = f->regs[FLASH_SECWM2R2 / 4u];
+        return MM_TRUE;
+    }
+
+    /* RM0438: NSSR/SECSR status flags are write-1-to-clear; BSY is read-only. */
+    if (offset == FLASH_NSSR || offset == FLASH_SECSR) {
+        f->regs[offset / 4u] &= ~(value & FLASH_SR_W1C_MASK);
         return MM_TRUE;
     }
 
@@ -2142,16 +2485,26 @@ mm_bool mm_stm32l552_register_mmio(struct mmio_bus *bus)
     reg.size = MPCBB_SIZE;
     reg.read = mpcbb_read;
     reg.write = mpcbb_write;
+    mpcbb_alias[0].state = &mpcbb[0];
+    mpcbb_alias[0].secure_alias = MM_FALSE;
+    mpcbb_alias[1].state = &mpcbb[0];
+    mpcbb_alias[1].secure_alias = MM_TRUE;
+    mpcbb_alias[2].state = &mpcbb[1];
+    mpcbb_alias[2].secure_alias = MM_FALSE;
+    mpcbb_alias[3].state = &mpcbb[1];
+    mpcbb_alias[3].secure_alias = MM_TRUE;
     reg.base = MPCBB1_BASE;
-    reg.opaque = &mpcbb[0];
+    reg.opaque = &mpcbb_alias[0];
     if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
     reg.base = MPCBB1_SEC_BASE;
+    reg.opaque = &mpcbb_alias[1];
     if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
 
     reg.base = MPCBB2_BASE;
-    reg.opaque = &mpcbb[1];
+    reg.opaque = &mpcbb_alias[2];
     if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
     reg.base = MPCBB2_SEC_BASE;
+    reg.opaque = &mpcbb_alias[3];
     if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
 
     /* AES (non-secure and secure aliases) */
@@ -2278,6 +2631,9 @@ mm_bool mm_stm32l552_register_mmio(struct mmio_bus *bus)
 
     if (!stm32_i2c_init_at(bus, 0, g_i2c_bases, g_i2c_bases_sec, 4u)) return MM_FALSE;
 
+    mm_optbytes_register("OPTR", optb_optr_get, optb_optr_set);
+    mm_optbytes_register("SECWM1", optb_secwm1_get, optb_secwm1_set);
+    mm_optbytes_register("SECWM2", optb_secwm2_get, optb_secwm2_set);
     return MM_TRUE;
 }
 
@@ -2297,8 +2653,10 @@ void mm_stm32l552_flash_bind(struct mm_memmap *map,
     flash_ctl.base_s = map->flash_base_s;
     flash_ctl.base_ns = map->flash_base_ns;
     flash_ctl.dualbank_enabled = (flags & MM_TARGET_FLAG_DUALBANK) != 0u;
+    flash_ctl.map = map;
     flash_sync_option_regs(&flash_ctl);
     mm_memmap_set_flash_writer(map, flash_write_cb, &flash_ctl);
+    mm_memmap_set_flash_sector_secure(map, flash_page_tz_cb, &flash_ctl);
 }
 
 void mm_stm32l552_rng_set_nvic(struct mm_nvic *nvic)

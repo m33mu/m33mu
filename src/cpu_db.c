@@ -320,7 +320,7 @@ static const struct mm_cpu_entry cpu_table[] = {
             STM32L552_TIMER_INIT,
             STM32L552_TIMER_RESET,
             STM32L552_TIMER_TICK,
-            0,
+            STM32L552_TZ_ATTR,
             0,
             0,
             0,

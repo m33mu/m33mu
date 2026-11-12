@@ -33,6 +33,22 @@ These values are accepted by `--cpu`:
   reset, and `FLASH_OPTCR.SWAP_BANK` tells which mapping is in force now (RM0481 7.3.10).
   `--optbyte` and `monitor optbytes` set them as the device ships.
 
+### STM32L552 TrustZone notes
+
+- **SRAM.** GTZC MPCBB1 covers SRAM1 (192 KB) and MPCBB2 SRAM2 (64 KB) in 256-byte
+  blocks, all Secure out of reset. A Non-secure access to a Secure block raises a
+  SecureFault. The vector registers change only through the secure alias from Secure
+  state; `CR.LCK` and the `LCKVTRx` superblock locks hold until reset.
+- **Flash.** `SECWMxR1` watermarks and `SECBBxRy` make pages secure; a Non-secure
+  transaction to a secure page reads zero and its writes and erases are ignored.
+  See `--secwm1/2` in [cli-usage.md](cli-usage.md).
+- **Peripherals.** With the AES, HASH, RNG or PKA bit set in `TZSC_SECCFGR2`, a
+  Non-secure access to that peripheral's non-secure alias raises a SecureFault.
+- **Option bytes.** `FLASH_OPTR` resets to `0x9F4F70AA` (TZEN=1, DBANK=1, RDP level 0);
+  `M33MU_STM32L5_OPTR` or `--optbyte OPTR=` provision another value. Firmware writes
+  cannot change `TZEN`. With `TZEN=0`, or under `--no-tz`, the flash filter and the
+  TZSC checks are off.
+
 ### i.MX RT700 notes
 
 - **Boot.** The part is flashless: the XSPI0 AHB window (`0x28000000` NS / `0x38000000` S)
