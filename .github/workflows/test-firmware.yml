@@ -62,6 +62,8 @@ jobs:
         run: build/m33mu  tests/firmware/test-stm32u585/app.bin --spiflash:SPI1:file=/tmp/flash.bin:size=4096:mmap=0x60000000:cs=PB0 --tpm:SPI1:cs=PB1 --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu stm32u585 --quit-on-faults
       - name: Run STM32L5 firmware test (SPI peripherals selection)
         run: build/m33mu  tests/firmware/test-stm32l552/app.bin --spiflash:SPI1:file=/tmp/flash.bin:size=4096:mmap=0x60000000:cs=PB0 --tpm:SPI1:cs=PB1 --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu stm32l552 --quit-on-faults
+      - name: Run STM32WBA55 firmware test (RCC/PWR/USART1/flash, non-secure)
+        run: build/m33mu --cpu stm32wba55 --no-tz tests/firmware/test-stm32wba55/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
       - name: Run nRF5340 firmware test (SPI flash read/write)
         run: build/m33mu  tests/firmware/test-nrf5340/app.bin --spiflash:SPI0:file=/tmp/flash.bin:size=4096:mmap=0x60000000:cs=PB0 --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu nrf5340 --quit-on-faults
       - name: Run nRF5340 network core firmware test (LFCLK, RTC0, IPC, NVMC, UARTE0)

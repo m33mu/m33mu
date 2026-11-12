@@ -53,6 +53,9 @@
 #include "stm32l552/stm32l552_usart.h"
 #include "stm32l552/stm32l552_spi.h"
 #include "stm32l552/cpu_config.h"
+#include "stm32wba55/stm32wba55_mmio.h"
+#include "stm32wba55/stm32wba55_usart.h"
+#include "stm32wba55/cpu_config.h"
 #include "mcxw71c/mcxw71c_mmio.h"
 #include "mcxw71c/mcxw71c_timers.h"
 #include "mcxw71c/mcxw71c_usart.h"
@@ -332,6 +335,52 @@ static const struct mm_cpu_entry cpu_table[] = {
             STM32L552_TIMER_INIT,
             STM32L552_TIMER_RESET,
             STM32L552_TIMER_TICK,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
+        "stm32wba55",
+        {
+            STM32WBA55_FLASH_BASE_S,
+            STM32WBA55_FLASH_SIZE,
+            STM32WBA55_FLASH_BASE_NS,
+            STM32WBA55_FLASH_SIZE,
+            0,
+            0,
+            STM32WBA55_RAM_BASE_S,
+            STM32WBA55_RAM_SIZE,
+            STM32WBA55_RAM_BASE_NS,
+            STM32WBA55_RAM_SIZE,
+            1,
+            STM32WBA55_RAM_REGIONS,
+            STM32WBA55_RAM_REGION_COUNT,
+            0,
+            0,
+            STM32WBA55_FLAGS,
+            STM32WBA55_SOC_RESET,
+            STM32WBA55_SOC_REGISTER,
+            STM32WBA55_FLASH_BIND,
+            STM32WBA55_CLOCK_GET_HZ,
+            STM32WBA55_USART_INIT,
+            STM32WBA55_USART_RESET,
+            STM32WBA55_USART_POLL,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
             0,
             0,
             0,

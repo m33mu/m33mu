@@ -7,6 +7,7 @@ These values are accepted by `--cpu`:
 - `stm32h5f4`
 - `stm32u585`
 - `stm32l552`
+- `stm32wba55` — STM32WBA55CG (Cortex-M33, TrustZone, 1 MB single-bank flash)
 - `lpc55s69`
 - `mcxw71c` — NXP MCX W71 / MCXW716C (Cortex-M33, TrustZone, FMU0 flash)
 - `mcxn947`
@@ -115,6 +116,17 @@ These values are accepted by `--cpu`:
   `--uart-stdout` is the kit console) and SPI master mode on `--spiflash:SPIn`, with
   the select released after each frame unless `SPI_CTRL.SSEL_CONTINUOUS` is set.
   I2C mode, interrupts and a chip select driven from a GPIO are not modelled.
+
+### STM32WBA55 notes
+
+- **Modelled:** RCC (HSI16/HSE32/PLL1 ready bits, SYSCLK selection), PWR (`VOSR`),
+  the flash controller, ICACHE, GPIO A/B/C/H, USART1/USART2/LPUART1. Secure aliases at
+  `+0x10000000`; no GTZC, RNG or crypto.
+- **Flash.** 128 pages of 8 KB programmed by 128-bit flash words: stores with `PG` set
+  fill one word (`NSSR.WDW` while it is incomplete), a store to another word first is
+  `PGSERR` and loses both. A word that is not erased takes only all-zero data; anything
+  else is `PROGERR` with nothing written (RM0493 7.3.7). `NSCR1` is read-only while
+  `LOCK` is set; `OPTKEYR` unlocks `OPTLOCK`, `OBL_LAUNCH` resets the device.
 
 ### i.MX RT700 notes
 
