@@ -193,6 +193,12 @@ static void secure_hmac(mm_u8 out[32], const mm_u8 *key, mm_u32 key_len,
 }
 #endif
 
+void mm_mcxn947_secure_kdf(mm_u8 out[32], const mm_u8 *key, mm_u32 key_len,
+                           const mm_u8 *data, mm_u32 len)
+{
+    secure_hmac(out, key, key_len, data, len);
+}
+
 static void secure_mix_label(mm_u8 out[32], const mm_u8 *seed,
                              const char *label, mm_u32 a, mm_u32 b)
 {

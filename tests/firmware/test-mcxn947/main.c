@@ -37,6 +37,20 @@ static inline void syscon_enable(uint32_t bit)
 #define GPIO_PCOR(b)     (*(volatile uint32_t *)((b) + 0x28u))
 #define GPIO_PDDR(b)     (*(volatile uint32_t *)((b) + 0x34u))
 
+/* S50 ELS and AHB secure controller */
+#define ELS_BASE         0x40054000u
+#define ELS_STATUS       (*(volatile uint32_t *)(ELS_BASE + 0x00u))
+#define ELS_CTRL         (*(volatile uint32_t *)(ELS_BASE + 0x04u))
+#define ELS_CMDCFG0      (*(volatile uint32_t *)(ELS_BASE + 0x08u))
+#define ELS_DMA_RES0     (*(volatile uint32_t *)(ELS_BASE + 0x38u))
+#define ELS_DMA_RES0_LEN (*(volatile uint32_t *)(ELS_BASE + 0x3Cu))
+#define ELS_STATUS_BUSY  (1u << 0)
+#define ELS_STATUS_ERR   (1u << 2)
+#define ELS_CTRL_EN      (1u << 0)
+#define ELS_CTRL_START   (1u << 1)
+#define ELS_CMD_RND_REQ  (24u << 3)
+#define AHBSC_MISC_CTRL_REG (*(volatile uint32_t *)(0x40120000u + 0xFFCu))
+
 /* LP_FLEXCOMM0 (UART mode) */
 #define FLEXCOMM0_BASE   0x40092000u
 #define FLEXCOMM_PSELID  0xFF8u
@@ -170,6 +184,31 @@ static uint32_t wait_systick(uint32_t target_ms)
     return (uint32_t)(systick_ms - start);
 }
 
+/* the wolfBoot hal_trng sequence: enable, then RND_REQ DMA into SRAM */
+static uint32_t els_rnd_buf[8] __attribute__((aligned(4)));
+
+static int els_rnd_req_ok(void)
+{
+    uint32_t first;
+    ELS_CTRL = ELS_CTRL_EN;
+    while ((ELS_STATUS & ELS_STATUS_BUSY) != 0u) {
+    }
+    ELS_DMA_RES0 = (uint32_t)els_rnd_buf;
+    ELS_DMA_RES0_LEN = sizeof(els_rnd_buf);
+    ELS_CMDCFG0 = 0u;
+    ELS_CTRL = ELS_CTRL_EN | ELS_CTRL_START | ELS_CMD_RND_REQ;
+    while ((ELS_STATUS & ELS_STATUS_BUSY) != 0u) {
+    }
+    if ((ELS_STATUS & ELS_STATUS_ERR) != 0u) {
+        return 0;
+    }
+    first = els_rnd_buf[0];
+    ELS_CTRL = ELS_CTRL_EN | ELS_CTRL_START | ELS_CMD_RND_REQ;
+    while ((ELS_STATUS & ELS_STATUS_BUSY) != 0u) {
+    }
+    return ((ELS_STATUS & ELS_STATUS_ERR) == 0u && els_rnd_buf[0] != first) ? 1 : 0;
+}
+
 int main(void)
 {
     uint8_t id0, id1, id2;
@@ -194,6 +233,8 @@ int main(void)
     printf("JEDEC ID: %02x %02x %02x\n", id0, id1, id2);
     printf("SysTick ms: %lu\n", (unsigned long)systick_ms);
     printf("SysTick +%lu ms\n", (unsigned long)wait_systick(5u));
+    printf("ELS RND_REQ: %s\n", els_rnd_req_ok() ? "PASS" : "FAIL");
+    printf("AHBSC MISC_CTRL: %s\n", (AHBSC_MISC_CTRL_REG == 0x0000AAAAu) ? "PASS" : "FAIL");
 
     printf("MCXN947 test done\n");
 

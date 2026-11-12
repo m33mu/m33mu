@@ -133,6 +133,23 @@ These values are accepted by `--cpu`:
   GRTC, TIMER00..24, UARTE/SPIM with the nRF54 EasyDMA layout (`TASKS_DMA`, `DMA.RX`,
   `DMA.TX`), CRACEN RNG FIFO fed from the host RNG (`--rng-seed`), FICR, TAMPC.
 
+### MCXN947 notes
+
+- **SRAM security.** The AHB secure controller (`AHBSC`, `0x40120000` / `0x50120000`)
+  attributes SRAM: `RAMA..RAMH_MEM_RULE` fields (one 2-bit rule per 4 KB) apply once
+  `MISC_CTRL_REG`/`MISC_CTRL_DP_REG` enable secure checking (off at reset, so the SAU alone
+  decides until then), and strict mode refuses the Secure alias of a Non-secure rule unless
+  both copies disable it, as the SDK `tzm_config.c` does. The TRDC MBC registers are a
+  register file only.
+- **ELS (S50).** The real SFR interface at `0x40054000` / `0x50054000` with the commands
+  wolfBoot drives through `mcuxClEls`: `RND_REQ` (DMA into SRAM), `KDELETE`, `HKDF` and,
+  with wolfSSL, P-256 `KEYGEN` and `ECSIGN` over a 20-slot keystore; slot 7 holds the ROM
+  DICE CDI at reset. Commands complete synchronously; `SYSCON AHBCLKCTRL2/PRESETCTRL2` bit
+  18 gate the block and reset enabled. The synthetic PUF/OTP/ELS-command/PKC blocks at
+  `0x40024000..0x4002C000` used by the ROM API are unchanged.
+- **IFR UUID.** The 128-bit device UUID is readable at `0x01100000` (the bytes
+  `ffr_get_uuid` returns).
+
 You can also print the list directly from the executable:
 
 ```sh

@@ -14,13 +14,14 @@
 #define MCXN947_PERIPH_BASE_S  0x50000000u
 #define MCXN947_PERIPH_BASE_NS 0x40000000u
 
-/* MPCBB bank 0 is the flash MBC (reset NSE all set); RAM is not checked by it. */
+/* RAM blocks follow the AHBSC RAMx_MEM_RULE fields once secure checking is
+ * on (bank 0 of mm_mcxn947_mpcbb_block_secure); the flash MBC never sees RAM. */
 static const struct mm_ram_region MCXN947_RAM_REGIONS[] = {
-    { MCXN947_RAM_BASE_S, MCXN947_RAM_BASE_NS, MCXN947_RAM_SIZE, -1, 0u }
+    { MCXN947_RAM_BASE_S, MCXN947_RAM_BASE_NS, MCXN947_RAM_SIZE, 0, 0u }
 };
 
 #define MCXN947_RAM_REGION_COUNT (sizeof(MCXN947_RAM_REGIONS) / sizeof(MCXN947_RAM_REGIONS[0]))
-#define MCXN947_MPCBB_BLOCK_SIZE 32768u
+#define MCXN947_MPCBB_BLOCK_SIZE 4096u  /* one AHBSC RAMx_MEM_RULE field */
 
 #define MCXN947_SOC_RESET      mm_mcxn947_mmio_reset
 #define MCXN947_SOC_REGISTER   mm_mcxn947_register_mmio

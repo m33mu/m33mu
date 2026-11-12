@@ -5573,6 +5573,10 @@ int main(int argc, char **argv)
             if (cpu_name != 0 && strcmp(cpu_name, "mcxn947") == 0) {
                 mm_prot_add_region(&execution.protection[0], 0x1303fc00u, 0x00000200u, MM_PROT_PERM_READ, MM_SECURE);
                 mm_prot_add_region(&execution.protection[0], 0x1303fc00u, 0x00000200u, MM_PROT_PERM_READ, MM_NONSECURE);
+                /* IFR0 UUID block, read by the DICE HAL at its NS address */
+                mm_prot_add_region(&execution.protection[0], 0x01100000u, 0x00000100u, MM_PROT_PERM_READ, MM_SECURE);
+                mm_prot_add_region(&execution.protection[0], 0x01100000u, 0x00000100u, MM_PROT_PERM_READ, MM_NONSECURE);
+                mm_prot_add_region(&execution.protection[0], 0x11100000u, 0x00000100u, MM_PROT_PERM_READ, MM_SECURE);
             }
             if (cpu_name != 0 && strcmp(cpu_name, "lpc55s69") == 0) {
                 /* LPC55S69 ROM is at 0x03000000 (NS alias) / 0x13000000 (S alias).

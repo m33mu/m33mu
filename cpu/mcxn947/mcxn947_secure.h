@@ -33,6 +33,8 @@ void mm_mcxn947_secure_flash_bind(struct mm_memmap *map,
 mm_bool mm_mcxn947_secure_otp_read(mm_u32 index, mm_u32 *value_out);
 mm_bool mm_mcxn947_secure_otp_program(mm_u32 index, mm_u32 value);
 void mm_mcxn947_secure_rng_fill(mm_u8 *out, mm_u32 len);
+void mm_mcxn947_secure_kdf(mm_u8 out[32], const mm_u8 *key, mm_u32 key_len,
+                           const mm_u8 *data, mm_u32 len);
 mm_bool mm_mcxn947_secure_els_clock_ready(void);
 mm_bool mm_mcxn947_secure_rom_call_allowed(enum mm_sec_state sec);
 enum mcxn947_lifecycle_state mm_mcxn947_secure_lifecycle(void);

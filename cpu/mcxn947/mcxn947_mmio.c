@@ -7,7 +7,9 @@
 #include "mcxn947/mcxn947_mmio.h"
 #include "mcxn947/mcxn947_romapi.h"
 #include "mcxn947/mcxn947_secure.h"
+#include "mcxn947/mcxn947_els.h"
 #include "m33mu/memmap.h"
+#include "m33mu/mem_prot.h"
 #include "m33mu/mmio.h"
 #include "m33mu/gpio_pads.h"
 #include "m33mu/gpio.h"
@@ -101,10 +103,35 @@
 #define TRDC_NSE_DID_SEL0 (1u << 16)
 #define TRDC_NSE_AI (1u << 31)
 
+/* AHB secure controller: SRAM security comes from the RAMx_MEM_RULE fields
+ * (2-bit rule per 4 KB at a 4-bit stride), applied once MISC_CTRL enables
+ * secure checking; strict mode refuses Secure accesses to Non-secure rules. */
+#define AHBSC_BASE 0x40120000u
+#define AHBSC_SEC_BASE 0x50120000u
+#define AHBSC_SIZE 0x1000u
+#define AHBSC_RAM_BASE 0x20000000u
+#define AHBSC_RULE_BLOCK_SIZE 0x1000u
+#define AHBSC_RULE_SECURE (1u << 1)
+#define AHBSC_MISC_CTRL_DP_REG 0xFF8u
+#define AHBSC_MISC_CTRL_REG 0xFFCu
+#define AHBSC_MISC_CTRL_RESET 0x0000AAAAu
+#define AHBSC_SECURE_CHECKING_SHIFT 2u
+#define AHBSC_STRICT_MODE_SHIFT 10u
+#define AHBSC_FIELD_SET 0x1u
+#define AHBSC_FIELD_OFF 0x2u
+
+/* IFR0 device UUID block (ROM ffr_get_uuid reads the same bytes) */
+#define IFR_UUID_BASE 0x01100000u
+#define IFR_UUID_SEC_BASE 0x11100000u
+#define IFR_UUID_SIZE 0x100u
+
 /* SYSCON register offsets */
 #define SYSCON_PRESETCTRL0 0x100u
 #define SYSCON_AHBCLKCTRL0 0x200u
 #define SYSCON_AHBCLKCTRL1 0x204u
+#define SYSCON_PRESETCTRL2 0x108u
+#define SYSCON_AHBCLKCTRL2 0x208u
+#define SYSCON_CTRL2_ELS (1u << 18)
 
 struct gpio_bank {
     mm_u32 regs[GPIO_SIZE / 4];
@@ -139,7 +166,25 @@ static struct port_state ports[6];
 static struct scg_state scg;
 static struct fmu_state fmu;
 static struct trdc_state trdc;
+static mm_u32 ahbsc_regs[AHBSC_SIZE / 4u];
 static struct mm_nvic *g_gpio_nvic = 0;
+
+struct ahbsc_ram_bank {
+    mm_u32 base;
+    mm_u32 size;
+    mm_u32 rule_offset;
+};
+
+static const struct ahbsc_ram_bank ahbsc_ram_banks[] = {
+    { 0x20000000u, 0x8000u,  0x0A0u }, /* RAMA */
+    { 0x20008000u, 0x8000u,  0x0C0u }, /* RAMB */
+    { 0x20010000u, 0x10000u, 0x0E0u }, /* RAMC */
+    { 0x20020000u, 0x10000u, 0x100u }, /* RAMD */
+    { 0x20030000u, 0x10000u, 0x120u }, /* RAME */
+    { 0x20040000u, 0x10000u, 0x140u }, /* RAMF */
+    { 0x20050000u, 0x10000u, 0x160u }, /* RAMG */
+    { 0x20060000u, 0x8000u,  0x180u }  /* RAMH */
+};
 
 static int port_index_for_bank(int bank)
 {
@@ -714,6 +759,68 @@ static mm_bool trdc_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32
     return MM_TRUE;
 }
 
+static mm_bool ahbsc_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 *value_out)
+{
+    (void)opaque;
+    if (value_out == 0 || size_bytes != 4u || (offset & 3u) != 0u) return MM_FALSE;
+    if (offset + size_bytes > AHBSC_SIZE) return MM_FALSE;
+    *value_out = ahbsc_regs[offset / 4u];
+    return MM_TRUE;
+}
+
+static mm_bool ahbsc_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 value)
+{
+    (void)opaque;
+    if (size_bytes != 4u || (offset & 3u) != 0u) return MM_FALSE;
+    if (offset + size_bytes > AHBSC_SIZE) return MM_FALSE;
+    ahbsc_regs[offset / 4u] = value;
+    return MM_TRUE;
+}
+
+static mm_u32 ahbsc_misc_field(mm_u32 reg, mm_u32 shift)
+{
+    return (ahbsc_regs[reg / 4u] >> shift) & 0x3u;
+}
+
+static mm_bool ahbsc_checking_active(void)
+{
+    return (ahbsc_misc_field(AHBSC_MISC_CTRL_REG, AHBSC_SECURE_CHECKING_SHIFT) == AHBSC_FIELD_OFF &&
+            ahbsc_misc_field(AHBSC_MISC_CTRL_DP_REG, AHBSC_SECURE_CHECKING_SHIFT) == AHBSC_FIELD_OFF) ?
+        MM_FALSE : MM_TRUE;
+}
+
+static mm_bool ahbsc_cpu_strict(void)
+{
+    return (ahbsc_misc_field(AHBSC_MISC_CTRL_REG, AHBSC_STRICT_MODE_SHIFT) == AHBSC_FIELD_SET &&
+            ahbsc_misc_field(AHBSC_MISC_CTRL_DP_REG, AHBSC_STRICT_MODE_SHIFT) == AHBSC_FIELD_SET) ?
+        MM_FALSE : MM_TRUE;
+}
+
+static mm_bool ifr_uuid_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 *value_out)
+{
+    struct mcxn947_attestation_blob blob;
+    mm_u8 buf[IFR_UUID_SIZE];
+    (void)opaque;
+    if (value_out == 0 || size_bytes == 0u || size_bytes > 4u) return MM_FALSE;
+    if (offset + size_bytes > IFR_UUID_SIZE) return MM_FALSE;
+    memset(buf, 0, sizeof(buf));
+    if (mm_mcxn947_secure_attest(&blob)) {
+        memcpy(buf, blob.pubkey, 16u);
+    }
+    *value_out = 0u;
+    memcpy(value_out, buf + offset, size_bytes);
+    return MM_TRUE;
+}
+
+static mm_bool ifr_uuid_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 value)
+{
+    (void)opaque;
+    (void)offset;
+    (void)size_bytes;
+    (void)value;
+    return MM_FALSE;
+}
+
 void mm_mcxn947_mmio_reset(void)
 {
     memset(gpio_banks, 0, sizeof(gpio_banks));
@@ -731,6 +838,9 @@ void mm_mcxn947_mmio_reset(void)
     /* Initialize SYSCON reset states */
     syscon.regs[SYSCON_AHBCLKCTRL0 / 4] = 0x021FFE603u; /* + ELS clock bit */
     syscon.regs[SYSCON_PRESETCTRL0 / 4] = 0x021FFE000u; /* + ELS reset released */
+    /* boot ROM leaves the S50 ELS clocked and out of reset */
+    syscon.regs[SYSCON_AHBCLKCTRL2 / 4] = SYSCON_CTRL2_ELS;
+    syscon.regs[SYSCON_PRESETCTRL2 / 4] = SYSCON_CTRL2_ELS;
 
     scg.regs[SCG_VERID / 4u] = 0x00000000u;
     scg.regs[SCG_PARAM / 4u] = 0x000001FEu;
@@ -779,7 +889,11 @@ void mm_mcxn947_mmio_reset(void)
     mm_gpio_set_bank_info_reader(mcxn947_gpio_bank_info, 0);
     mm_gpio_set_external_input_writer(gpio_set_external_input_cb, 0);
     mm_rcc_set_clock_list_reader(mcxn947_rcc_clock_list_line, 0);
+    memset(ahbsc_regs, 0, sizeof(ahbsc_regs));
+    ahbsc_regs[AHBSC_MISC_CTRL_DP_REG / 4u] = AHBSC_MISC_CTRL_RESET;
+    ahbsc_regs[AHBSC_MISC_CTRL_REG / 4u] = AHBSC_MISC_CTRL_RESET;
     mm_mcxn947_secure_reset();
+    mm_mcxn947_els_reset();
     mm_mcxn947_romapi_reset();
 }
 
@@ -963,7 +1077,30 @@ mm_bool mm_mcxn947_register_mmio(struct mmio_bus *bus)
     reg.base = TRDC_SEC_BASE;
     if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
 
+    /* AHBSC */
+    reg.base = AHBSC_BASE;
+    reg.size = AHBSC_SIZE;
+    reg.opaque = ahbsc_regs;
+    reg.read = ahbsc_read;
+    reg.write = ahbsc_write;
+    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+    reg.base = AHBSC_SEC_BASE;
+    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+    mm_prot_set_mpcbb_gate(mm_mcxn947_mpcbb_block_secure, ahbsc_checking_active,
+                           ahbsc_cpu_strict);
+
+    /* IFR0 UUID */
+    reg.base = IFR_UUID_BASE;
+    reg.size = IFR_UUID_SIZE;
+    reg.opaque = 0;
+    reg.read = ifr_uuid_read;
+    reg.write = ifr_uuid_write;
+    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+    reg.base = IFR_UUID_SEC_BASE;
+    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+
     if (!mm_mcxn947_secure_register_mmio(bus)) return MM_FALSE;
+    if (!mm_mcxn947_els_register_mmio(bus)) return MM_FALSE;
 
     return MM_TRUE;
 }
@@ -976,6 +1113,7 @@ void mm_mcxn947_flash_bind(struct mm_memmap *map,
 {
     mm_mcxn947_romapi_set_persist(persist);
     mm_mcxn947_secure_flash_bind(map, flash, flash_size, persist, flags);
+    mm_mcxn947_els_bind_memmap(map);
 }
 
 mm_u64 mm_mcxn947_cpu_hz(void)
@@ -985,20 +1123,23 @@ mm_u64 mm_mcxn947_cpu_hz(void)
 
 mm_bool mm_mcxn947_mpcbb_block_secure(int bank, mm_u32 block_index)
 {
-    mm_u32 word;
-    mm_u32 bit;
-    mm_u32 nblks;
-    if (bank < 0 || bank >= 4) {
+    const struct ahbsc_ram_bank *b;
+    mm_u32 addr;
+    mm_u32 rule;
+    mm_u32 reg;
+    mm_u32 i;
+    if (bank != 0) {
         return MM_FALSE;
     }
-    nblks = trdc_mem_nblks(bank);
-    if (block_index >= nblks) {
-        return MM_FALSE;
+    addr = AHBSC_RAM_BASE + block_index * AHBSC_RULE_BLOCK_SIZE;
+    for (i = 0u; i < sizeof(ahbsc_ram_banks) / sizeof(ahbsc_ram_banks[0]); ++i) {
+        b = &ahbsc_ram_banks[i];
+        if (addr < b->base || (addr - b->base) >= b->size) {
+            continue;
+        }
+        rule = (addr - b->base) / AHBSC_RULE_BLOCK_SIZE;
+        reg = ahbsc_regs[(b->rule_offset + (rule / 8u) * 4u) / 4u];
+        return ((reg >> ((rule % 8u) * 4u)) & AHBSC_RULE_SECURE) != 0u ? MM_TRUE : MM_FALSE;
     }
-    word = block_index / 32u;
-    bit = block_index % 32u;
-    if (word >= 2u) {
-        return MM_FALSE;
-    }
-    return ((trdc.nse_words[bank][word] >> bit) & 1u) == 0u;
+    return MM_FALSE;
 }
