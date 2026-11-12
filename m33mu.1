@@ -698,6 +698,15 @@ When set to 1, trace WFE/WFI sleep and wake decisions.
 Print SAU/MPU attribution decisions.
 Values 1 through 3 increase verbosity.
 .TP
+.B M33MU_ROMAPI_TRACE
+When set, trace boot ROM API calls (RW612, i.MX RT700).
+.TP
+.B M33MU_FLEXSPI_TRACE
+When set, trace RW612 FlexSPI NOR program and erase operations.
+.TP
+.B M33MU_RW612_CHIP_REV
+RW612 silicon revision reported in SOCCTRL CHIP_INFO (default 2, A2); 0 selects the A0 ROM API tree.
+.TP
 .B M33MU_STM32H5_IDCODE
 Replace the STM32H5 DBGMCU_IDCODE value (hex with 0x, or decimal).
 .SH EXAMPLES

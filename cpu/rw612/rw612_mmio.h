@@ -20,6 +20,13 @@ void mm_rw612_flash_bind(struct mm_memmap *map,
                          mm_u32 flags);
 mm_u64 mm_rw612_cpu_hz(void);
 void mm_rw612_mmio_reset(void);
+mm_bool mm_rw612_boot_resolve(struct mm_memmap *map,
+                              const mm_u8 *flash,
+                              mm_u32 flash_size,
+                              mm_u32 *vtor_out);
+
+/* Silicon revision reported in SOCCTRL CHIP_INFO[7:0]. */
+mm_u32 mm_rw612_chip_rev(void);
 
 /*
  * Returns MM_TRUE when a peripheral on a CLKCTLn / RSTCTLn bit is both

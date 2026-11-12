@@ -10,7 +10,7 @@ These values are accepted by `--cpu`:
 - `lpc55s69`
 - `mcxw71c` — NXP MCX W71 / MCXW716C (Cortex-M33, TrustZone, FMU0 flash)
 - `mcxn947`
-- `rw612` — NXP RW612 (Cortex-M33 + ELS / PKA crypto offload)
+- `rw612` — NXP RW612 (Cortex-M33, FlexSPI NOR boot, ROM FlexSPI driver, ELS / PKA crypto offload)
 - `nrf5340`
 - `nrf5340net` — Nordic nRF5340 network core (Cortex-M33 without TrustZone, DSP or FPU; flash at 0x01000000, 2 KB NVMC pages)
 - `nrf54l15` — Nordic nRF54L15 (Cortex-M33, TrustZone through SPU / MPC)
@@ -59,6 +59,30 @@ These values are accepted by `--cpu`:
 - **Console.** LPUART1 (`0x40039000`, the FRDM-MCXW71 debug UART) takes `--uart-stdout`;
   LPUART0 gets a PTY.
 - **Not modelled.** The ELE S200 enclave (ELEMU mailbox) and the radio.
+
+### RW612 notes
+
+- **Boot.** The part is flashless: the FlexSPI AHB window (`0x08000000` NS / `0x18000000` S)
+  holds a 64 MB serial NOR. Images with a FlexSPI configuration block (`FCFB` tag at
+  offset `0x400`) boot like the ROM boots them, from the vector table at offset `0x1000`;
+  the image header in the vector table (length at `0x20`, load address at `0x34`) makes a
+  load address in SRAM a load-to-RAM image. Raw images without an FCB start at offset 0.
+  Signed image types are not authenticated.
+- **Always Secure.** The ROM starts the core Secure, so images linked at the non-secure
+  aliases still run Secure; neither `--no-tz` nor a non-secure initial stack demotes it.
+- **FlexSPI NOR.** The XIP window is read-only to the CPU. The NOR is programmed through
+  the boot ROM FlexSPI NOR driver (`fsl_romapi_flexspi.h` layout) at entry 5 of the ROM
+  API tree, `0x13030000` (A1 and later) or `0x13024100` (A0), picked by `SOCCTRL
+  CHIP_INFO` (A2 by default, `M33MU_RW612_CHIP_REV` overrides it). `init`, `page_program`
+  (NOR semantics: bits only clear, the page wraps), `partial_program`, `erase`,
+  `erase_sector`, `erase_block`, `erase_all`, `read` and `get_config` act on the NOR;
+  changes are written back with `--persist`. `M33MU_ROMAPI_TRACE` and
+  `M33MU_FLEXSPI_TRACE` trace the calls and the NOR operations.
+- **SRAM.** 1.2 MB, visible at both the code-bus alias (`0x0` / `0x10000000`) and the
+  system-bus alias (`0x20000000` / `0x30000000`).
+- **Peripherals.** CLKCTL/RSTCTL, FlexComm USART/SPI (clock and reset on `CLKCTL1` /
+  `RSTCTL1` like the SDK), CACHE64 (commands complete at once), FlexSPI controller
+  registers, SOCCTRL, GPIO, CTIMER/MRT, ELS and PKA.
 
 ### i.MX RT700 notes
 

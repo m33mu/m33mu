@@ -354,3 +354,23 @@ jobs:
               tests/firmware/test-imxrt700/$t.bin < /dev/null | tee /tmp/m33mu-imxrt700-$t.log
             grep -q "ALL PASS" /tmp/m33mu-imxrt700-$t.log
           done
+      - name: Run RW612 firmware tests (FlexSPI boot, ROM API, ELS/PKA)
+        # Booted like the ROM does: FCB at 0x400, XIP image at 0x1000. The
+        # FlexSPI test replays wolfBoot's ROM API program/erase sequence.
+        run: |
+          set -euo pipefail
+          for t in test_uart test_flexspi test_els test_pka; do
+            build/m33mu \
+              --cpu rw612 \
+              --uart-stdout \
+              --expect-bkpt 0x7f \
+              --timeout 60 \
+              --quit-on-faults \
+              tests/firmware/test-rw612-sdk/$t.bin < /dev/null | tee /tmp/m33mu-rw612-$t.log
+            grep -q "ALL PASS" /tmp/m33mu-rw612-$t.log
+          done
+          # A0 silicon: the ROM API tree moves to 0x13024100; only CHIP_INFO[3:0] counts.
+          M33MU_RW612_CHIP_REV=0x10 build/m33mu --cpu rw612 --uart-stdout --expect-bkpt 0x7f \
+            --timeout 60 --quit-on-faults tests/firmware/test-rw612-sdk/test_flexspi.bin < /dev/null \
+            | tee /tmp/m33mu-rw612-a0.log
+          grep -q "ALL PASS" /tmp/m33mu-rw612-a0.log

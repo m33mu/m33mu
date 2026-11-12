@@ -881,7 +881,7 @@ static const struct mm_cpu_entry cpu_table[] = {
             RW612_TIMER_TICK,
             0,
             0,
-            0,
+            RW612_BOOT_RESOLVE,
             0,
             0,
             0,

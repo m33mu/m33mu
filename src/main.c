@@ -48,6 +48,7 @@
 #include "mcxn947/mcxn947_romapi.h"
 #include "lpc55s69/lpc55s69_romapi.h"
 #include "rw612/rw612_romapi.h"
+#include "rw612/cpu_config.h"
 #include "imxrt700/imxrt700_romapi.h"
 #include "imxrt700/cpu_config.h"
 #include "mcxw71c/mcxw71c_mmio.h"
@@ -595,6 +596,30 @@ static void add_mcxw71c_prot_regions(struct mm_prot_ctx *p, const struct mm_targ
                                MM_PROT_PERM_READ | MM_PROT_PERM_WRITE | MM_PROT_PERM_EXEC, MM_SECURE);
         }
     }
+}
+
+/*
+ * RW612: boot ROM (both aliases, the ROM API tree is read from either) and
+ * secure views of the non-secure FlexSPI and SRAM aliases, which the boot
+ * ROM-started secure core executes from while the SAU is disabled.
+ */
+static void add_rw612_prot_regions(struct mm_prot_ctx *p, const struct mm_target_cfg *cfg)
+{
+    mm_u32 ri;
+    mm_prot_add_region(p, RW612_ROM_BASE_S, RW612_ROM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_SECURE);
+    mm_prot_add_region(p, RW612_ROM_BASE_S, RW612_ROM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_NONSECURE);
+    mm_prot_add_region(p, RW612_ROM_BASE_NS, RW612_ROM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_SECURE);
+    mm_prot_add_region(p, RW612_ROM_BASE_NS, RW612_ROM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_NONSECURE);
+    for (ri = 0; ri < cfg->ram_region_count; ++ri) {
+        const struct mm_ram_region *r = &cfg->ram_regions[ri];
+        mm_prot_add_region(p, r->base_ns, r->size,
+                           MM_PROT_PERM_READ | MM_PROT_PERM_WRITE | MM_PROT_PERM_EXEC, MM_SECURE);
+    }
+    /* PKA scratch RAM (both aliases). */
+    mm_prot_add_region(p, RW612_PKA_RAM_BASE, RW612_PKA_RAM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_WRITE, MM_SECURE);
+    mm_prot_add_region(p, RW612_PKA_RAM_BASE, RW612_PKA_RAM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_WRITE, MM_NONSECURE);
+    mm_prot_add_region(p, RW612_PKA_RAM_BASE | 0x10000000u, RW612_PKA_RAM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_WRITE, MM_SECURE);
+    mm_prot_add_region(p, RW612_PKA_RAM_BASE | 0x10000000u, RW612_PKA_RAM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_WRITE, MM_NONSECURE);
 }
 
 static void dump_cpu_regs(const struct mm_cpu *cpu, const char *tag)
@@ -5560,20 +5585,7 @@ int main(int argc, char **argv)
                 mm_prot_add_region(&execution.protection[0], 0x13000000u, 0x00020000u, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_NONSECURE);
             }
             if (cpu_name != 0 && strcmp(cpu_name, "rw612") == 0) {
-                /* RW612 ROM stub region (S + NS aliases) and ROM API tree. */
-                mm_prot_add_region(&execution.protection[0], 0x03001000u, 0x00001000u, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_SECURE);
-                mm_prot_add_region(&execution.protection[0], 0x03001000u, 0x00001000u, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_NONSECURE);
-                mm_prot_add_region(&execution.protection[0], 0x13001000u, 0x00001000u, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_SECURE);
-                mm_prot_add_region(&execution.protection[0], 0x13001000u, 0x00001000u, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_NONSECURE);
-                mm_prot_add_region(&execution.protection[0], 0x0301F000u, 0x00000100u, MM_PROT_PERM_READ, MM_SECURE);
-                mm_prot_add_region(&execution.protection[0], 0x0301F000u, 0x00000100u, MM_PROT_PERM_READ, MM_NONSECURE);
-                mm_prot_add_region(&execution.protection[0], 0x1301F000u, 0x00000100u, MM_PROT_PERM_READ, MM_SECURE);
-                mm_prot_add_region(&execution.protection[0], 0x1301F000u, 0x00000100u, MM_PROT_PERM_READ, MM_NONSECURE);
-                /* PKA scratch RAM at 0x22040000 (also 0x32040000 secure alias). */
-                mm_prot_add_region(&execution.protection[0], 0x22040000u, 0x00001000u, MM_PROT_PERM_READ | MM_PROT_PERM_WRITE, MM_SECURE);
-                mm_prot_add_region(&execution.protection[0], 0x22040000u, 0x00001000u, MM_PROT_PERM_READ | MM_PROT_PERM_WRITE, MM_NONSECURE);
-                mm_prot_add_region(&execution.protection[0], 0x32040000u, 0x00001000u, MM_PROT_PERM_READ | MM_PROT_PERM_WRITE, MM_SECURE);
-                mm_prot_add_region(&execution.protection[0], 0x32040000u, 0x00001000u, MM_PROT_PERM_READ | MM_PROT_PERM_WRITE, MM_NONSECURE);
+                add_rw612_prot_regions(&execution.protection[0], &execution.target);
             }
             if (cpu_name != 0 && strcmp(cpu_name, "pic32ck") == 0) {
                 /* PIC32CK Boot ROM: 0x08000000, 128 KB */
