@@ -72,6 +72,13 @@ jobs:
         run: |
           build/m33mu tests/firmware/test-nrf54l/app-nrf54l15.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu nrf54l15 --quit-on-faults
           build/m33mu tests/firmware/test-nrf54l/app-nrf54lm20.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu nrf54lm20 --quit-on-faults
+      - name: Run MCXW71 FMU0 flash firmware test
+        run: |
+          set -euo pipefail
+          build/m33mu --cpu mcxw71c --uart-stdout --expect-bkpt 0x7f \
+            --timeout 60 --quit-on-faults \
+            tests/firmware/test-mcxw-flash/app.bin < /dev/null | tee /tmp/m33mu-mcxw-flash.log
+          grep -q "ALL PASS" /tmp/m33mu-mcxw-flash.log
       - name: Run STM32H5 firmware test (Floating point instructions)
         run: build/m33mu tests/firmware/test-fpu-instructions/app.bin --uart-stdout --expect-bkpt 0x7f --timeout 60 --quit-on-faults
       - name: Run RTOS exception firmware test

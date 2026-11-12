@@ -678,6 +678,7 @@ add_custom_target(firmware-build
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32u585 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32l552 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxw app.bin
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxw-flash app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxn947 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-nrf5340 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-nrf5340net app.bin
@@ -807,6 +808,8 @@ add_custom_target(test-firmware
           --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
   COMMAND $<TARGET_FILE:m33mu> --cpu nrf54lm20 tests/firmware/test-nrf54l/app-nrf54lm20.bin
           --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  COMMAND $<TARGET_FILE:m33mu> --cpu mcxw71c tests/firmware/test-mcxw-flash/app.bin
+          --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
   DEPENDS m33mu firmware-build
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )
@@ -891,6 +894,14 @@ add_custom_target(test-mcxw
   COMMAND $<TARGET_FILE:m33mu> --cpu mcxw71c tests/firmware/test-mcxw/app.bin
           --uart-stdout
           --spiflash:SPI0:file=tests/firmware/test-mcxw/spi_flash.bin:size=2097152:mmap=0x01000000:cs=PA0
+  DEPENDS m33mu
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)
+
+add_custom_target(test-mcxw-flash
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxw-flash app.bin
+  COMMAND $<TARGET_FILE:m33mu> --cpu mcxw71c tests/firmware/test-mcxw-flash/app.bin
+          --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
   DEPENDS m33mu
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )

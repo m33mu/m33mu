@@ -59,6 +59,11 @@ Supported profiles at the time of writing:
 .BR pic32ck ,
 .BR m2354 ,
 .BR imxrt700 .
+On
+.BR mcxw71c ,
+flash is programmed through the FMU0 command interface (phrase and page
+program, sector erase) and LPUART1 takes
+.BR --uart-stdout .
 .TP
 .BR --gdb
 Start the built\-in GDB remote serial protocol server on port 1234.

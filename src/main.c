@@ -50,6 +50,7 @@
 #include "rw612/rw612_romapi.h"
 #include "imxrt700/imxrt700_romapi.h"
 #include "imxrt700/cpu_config.h"
+#include "mcxw71c/mcxw71c_mmio.h"
 #include "rp2350/rp2350_mmio.h"
 #include "stm32h533/stm32h533_mmio.h"
 #include "stm32h563/stm32h563_mmio.h"
@@ -575,6 +576,24 @@ static void add_imxrt700_prot_regions(struct mm_prot_ctx *p, const struct mm_tar
         const struct mm_ram_region *r = &cfg->ram_regions[ri];
         mm_prot_add_region(p, r->base_ns, r->size,
                            MM_PROT_PERM_READ | MM_PROT_PERM_WRITE | MM_PROT_PERM_EXEC, MM_SECURE);
+    }
+}
+
+/*
+ * MCX W71: the MCM in the vendor PPB, and secure views of the non-secure SRAM
+ * alias, where TZEN=0 images (and their RAM functions) run before any SAU setup.
+ */
+static void add_mcxw71c_prot_regions(struct mm_prot_ctx *p, const struct mm_target_cfg *cfg)
+{
+    mm_u32 ri;
+    mm_prot_add_region(p, MCXW71C_MCM_BASE, MCXW71C_MCM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_WRITE, MM_SECURE);
+    mm_prot_add_region(p, MCXW71C_MCM_BASE, MCXW71C_MCM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_WRITE, MM_NONSECURE);
+    for (ri = 0; ri < cfg->ram_region_count; ++ri) {
+        const struct mm_ram_region *r = &cfg->ram_regions[ri];
+        if (r->base_ns != r->base_s) {
+            mm_prot_add_region(p, r->base_ns, r->size,
+                               MM_PROT_PERM_READ | MM_PROT_PERM_WRITE | MM_PROT_PERM_EXEC, MM_SECURE);
+        }
     }
 }
 
@@ -5577,6 +5596,9 @@ int main(int argc, char **argv)
                 /* STM32U5/L5 expose vendor PPB blocks such as DBGMCU at 0xE004xxxx. */
                 mm_prot_add_region(&execution.protection[0], 0xE0040000u, 0x00010000u, MM_PROT_PERM_READ | MM_PROT_PERM_WRITE, MM_SECURE);
                 mm_prot_add_region(&execution.protection[0], 0xE0040000u, 0x00010000u, MM_PROT_PERM_READ | MM_PROT_PERM_WRITE, MM_NONSECURE);
+            }
+            if (cpu_name != 0 && strcmp(cpu_name, "mcxw71c") == 0) {
+                add_mcxw71c_prot_regions(&execution.protection[0], &execution.target);
             }
             if (cpu_name != 0 && strcmp(cpu_name, "rp2350") == 0) {
                 mm_prot_add_region(&execution.protection[0], 0x00000000u, 0x00001000u, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_SECURE);

@@ -8,7 +8,7 @@ These values are accepted by `--cpu`:
 - `stm32u585`
 - `stm32l552`
 - `lpc55s69`
-- `mcxw71c`
+- `mcxw71c` — NXP MCX W71 / MCXW716C (Cortex-M33, TrustZone, FMU0 flash)
 - `mcxn947`
 - `rw612` — NXP RW612 (Cortex-M33 + ELS / PKA crypto offload)
 - `nrf5340`
@@ -34,6 +34,31 @@ These values are accepted by `--cpu`:
   Write protection and the watermarks act at once; a new `SWAP_BANK` waits for the next
   reset, and `FLASH_OPTCR.SWAP_BANK` tells which mapping is in force now (RM0481 7.3.10).
   `--optbyte` and `monitor optbytes` set them as the device ships.
+
+### MCX W71 notes
+
+- **Always Secure.** The core resets Secure and TrustZone cannot be turned off, so
+  images linked at the non-secure aliases (`0x0` flash, `0x20000000` STCM) run Secure
+  with the SAU disabled, as on the part; `--no-tz` does not demote the core.
+- **FMU0 flash controller.** Flash is programmed through FMU0 (`0x40020000` /
+  `0x50020000`): a command launched from `FCCOB0` by writing `FSTAT.CCIF` raises
+  `PEWEN`, the phrase (16 bytes, `PGMPHR` 0x24), page (128 bytes, `PGMPG` 0x23) or any
+  phrase of the 8 KB sector (`ERSSCR` 0x42) is stored to the array through either
+  alias, `PERDY` rises once the unit is complete, and acknowledging `PERDY` runs it
+  and sets `CCIF`. `ERSALL` (0x40) and the verify-erase commands (0x00-0x04, `FAIL`
+  on non-erased data) are modelled too. A store with no write phase open bus-faults; a
+  sub-word store, a store outside the latched phrase or an unknown command raise
+  `ACCERR`, and a launch is ignored while `ACCERR`/`PVIOL` are set. Programming only
+  clears bits. The single 1 MB block has no read-while-write: the array faults on
+  reads and fetches while a command is open, so flash routines must run from SRAM.
+  Program and erase are written back with `--persist`.
+- **Clocks and power.** SCG, CCM32K, VBAT and MRCC report their oscillators valid; SPC
+  never shows `SC.BUSY` and acknowledges `SRAMCTL.REQ` at once, so the SDK
+  `BOARD_BootClockRUN` completes. SMSCM (`OCMDR0` cache control) and the MCM
+  (`0xE0080000`, `CPCR2.CCBC` self-clearing) are register files.
+- **Console.** LPUART1 (`0x40039000`, the FRDM-MCXW71 debug UART) takes `--uart-stdout`;
+  LPUART0 gets a PTY.
+- **Not modelled.** The ELE S200 enclave (ELEMU mailbox) and the radio.
 
 ### i.MX RT700 notes
 

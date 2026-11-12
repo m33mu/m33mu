@@ -5,7 +5,7 @@
 
 extern uint32_t _ebss;
 extern uint32_t _estack;
-extern void lpuart0_putc(char c);
+extern void lpuart1_putc(char c);
 
 static char *heap_end;
 
@@ -13,7 +13,7 @@ int _write(int file, const char *ptr, int len)
 {
     (void)file;
     for (int i = 0; i < len; ++i) {
-        lpuart0_putc(ptr[i]);
+        lpuart1_putc(ptr[i]);
     }
     return len;
 }
