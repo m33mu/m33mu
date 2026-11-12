@@ -62,6 +62,14 @@ static mm_bool g_nvic_enable_log_second_set[NVIC_WORDS];
 
 static mm_bool nvic_enable_log_suppressed(mm_u32 idx, mm_u32 value);
 
+/* Non-secure code sees the priority of non-secure interrupts only (RAZ/WI). */
+static mm_bool nvic_ipr_visible(const struct mm_nvic *nvic, enum mm_sec_state eff_sec, mm_u32 idx)
+{
+    if (idx >= mm_nvic_lines(nvic)) return MM_FALSE;
+    if (eff_sec != MM_NONSECURE) return MM_TRUE;
+    return ((nvic->itns_mask[idx / 32u] >> (idx % 32u)) & 1u) != 0u ? MM_TRUE : MM_FALSE;
+}
+
 static mm_bool nvic_trace_enabled(void)
 {
     static mm_bool init = MM_FALSE;
@@ -301,7 +309,7 @@ static mm_bool scs_read_nvic(struct mm_nvic *nvic, enum mm_sec_state eff_sec,
                        (unsigned long)idx,
                        (unsigned long)((idx < mm_nvic_lines(nvic)) ? nvic->priority[idx] : 0u));
             }
-            *value_out = (idx < mm_nvic_lines(nvic)) ? nvic->priority[idx] : 0u;
+            *value_out = nvic_ipr_visible(nvic, eff_sec, idx) ? nvic->priority[idx] : 0u;
             return MM_TRUE;
         }
         if (size_bytes == 4u && (idx % 4u) == 0u) {
@@ -309,7 +317,7 @@ static mm_bool scs_read_nvic(struct mm_nvic *nvic, enum mm_sec_state eff_sec,
             mm_u32 i;
             for (i = 0; i < 4u; ++i) {
                 mm_u32 pidx = idx + i;
-                mm_u8 p = (pidx < mm_nvic_lines(nvic)) ? nvic->priority[pidx] : 0u;
+                mm_u8 p = nvic_ipr_visible(nvic, eff_sec, pidx) ? nvic->priority[pidx] : 0u;
                 v |= ((mm_u32)p) << (i * 8u);
             }
             *value_out = v;
@@ -530,7 +538,7 @@ static mm_bool scs_write_nvic(struct mm_nvic *nvic, enum mm_sec_state eff_sec,
     if (nvic != 0 && offset >= 0x400u && offset < NVIC_IPR_END) {
         mm_u32 idx = offset - 0x400u;
         if (size_bytes == 1u) {
-            if (idx < mm_nvic_lines(nvic)) {
+            if (nvic_ipr_visible(nvic, eff_sec, idx)) {
                 mm_u8 old_prio = nvic->priority[idx];
                 mm_u8 new_prio = (mm_u8)(value & 0xFFu);
                 nvic->priority[idx] = new_prio;
@@ -547,7 +555,7 @@ static mm_bool scs_write_nvic(struct mm_nvic *nvic, enum mm_sec_state eff_sec,
             for (i = 0; i < 4u; ++i) {
                 mm_u32 pidx = idx + i;
                 mm_u8 p = (mm_u8)((value >> (i * 8u)) & 0xFFu);
-                if (pidx < mm_nvic_lines(nvic)) {
+                if (nvic_ipr_visible(nvic, eff_sec, pidx)) {
                     if (nvic->priority[pidx] != p) changed = MM_TRUE;
                     nvic->priority[pidx] = p;
                 }

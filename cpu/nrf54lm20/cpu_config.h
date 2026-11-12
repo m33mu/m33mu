@@ -1,12 +1,15 @@
 #ifndef M33MU_CPU_NRF54LM20_CONFIG_H
 #define M33MU_CPU_NRF54LM20_CONFIG_H
 
-/* Nordic nRF54LM20A (FLPR) memory map (Secure / Non-secure aliases) */
-#define NRF54LM20_FLASH_BASE_S   0x10000000u
+#include "m33mu/target.h"
+
+/* Nordic nRF54LM20A application core. RRAM and RAM have one address for both
+ * security states; SPU and MPC00 attribute them (cpu/nrf54l_mmio.c). */
+#define NRF54LM20_FLASH_BASE_S   0x00000000u
 #define NRF54LM20_FLASH_BASE_NS  0x00000000u
 #define NRF54LM20_FLASH_SIZE     0x001FD000u  /* 2036 KB RRAM */
 
-#define NRF54LM20_RAM_BASE_S     0x30000000u
+#define NRF54LM20_RAM_BASE_S     0x20000000u
 #define NRF54LM20_RAM_BASE_NS    0x20000000u
 #define NRF54LM20_RAM_SIZE       0x00080000u  /* 512 KB RAM (RAM + RAM2) */
 
@@ -27,7 +30,9 @@
 #define NRF54LM20_TIMER_INIT     mm_nrf54lm20_timers_init
 #define NRF54LM20_TIMER_RESET    mm_nrf54lm20_timers_reset
 #define NRF54LM20_TIMER_TICK     mm_nrf54lm20_timers_tick
+#define NRF54LM20_TZ_ATTR        mm_nrf54lm20_tz_attr_for_addr
 
-#define NRF54LM20_FLAGS MM_TARGET_FLAG_FPU
+/* The core always starts Secure; TrustZone cannot be disabled. */
+#define NRF54LM20_FLAGS (MM_TARGET_FLAG_FPU | MM_TARGET_FLAG_SECURE_BOOT)
 
 #endif /* M33MU_CPU_NRF54LM20_CONFIG_H */

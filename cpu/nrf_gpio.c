@@ -25,12 +25,28 @@ static mm_u32 merge(mm_u32 cur, mm_u32 off, mm_u32 size, mm_u32 value)
     return (cur & ~(mask << (off * 8u))) | ((value & mask) << (off * 8u));
 }
 
+const struct nrf_gpio_layout nrf_gpio_layout_nrf53 = {
+    NRF_GPIO_OUT, NRF_GPIO_OUTSET, NRF_GPIO_OUTCLR, NRF_GPIO_IN,
+    NRF_GPIO_DIR, NRF_GPIO_DIRSET, NRF_GPIO_DIRCLR, NRF_GPIO_PIN_CNF0
+};
+
+const struct nrf_gpio_layout nrf_gpio_layout_nrf54l = {
+    0x000u, 0x004u, 0x008u, 0x00Cu, 0x010u, 0x014u, 0x018u, 0x080u
+};
+
+void nrf_gpio_bank_set_layout(struct nrf_gpio_bank *g, const struct nrf_gpio_layout *layout)
+{
+    if (g == 0 || layout == 0) return;
+    g->layout = layout;
+}
+
 void nrf_gpio_bank_init(struct nrf_gpio_bank *g, int index, int pins)
 {
     if (g == 0) return;
     memset(g, 0, sizeof(*g));
     g->index = index;
     g->pins = pins;
+    g->layout = &nrf_gpio_layout_nrf53;
     /* Reset PIN_CNF: input, input buffer disconnected. */
     {
         int i;
@@ -48,8 +64,8 @@ static mm_bool open_drain(mm_u32 cnf)
 /* Pins driven by the port and their levels (open drain drives only 0). */
 static mm_u32 driven_mask(const struct nrf_gpio_bank *g, mm_u32 *level_out)
 {
-    mm_u32 dir = g->regs[NRF_GPIO_DIR / 4];
-    mm_u32 out = g->regs[NRF_GPIO_OUT / 4];
+    mm_u32 dir = g->regs[g->layout->dir / 4];
+    mm_u32 out = g->regs[g->layout->out / 4];
     mm_u32 driven = dir;
     int pin;
     for (pin = 0; pin < 32; ++pin) {
@@ -64,7 +80,7 @@ static void sync_inputs(struct nrf_gpio_bank *g)
 {
     mm_u32 level = 0u;
     mm_u32 driven = driven_mask(g, &level);
-    mm_u32 in = g->regs[NRF_GPIO_OUT / 4];
+    mm_u32 in = g->regs[g->layout->out / 4];
     int pin;
     for (pin = 0; pin < 32; ++pin) {
         mm_u32 bit = 1u << pin;
@@ -79,7 +95,7 @@ static void sync_inputs(struct nrf_gpio_bank *g)
             in &= ~bit;
         }
     }
-    g->regs[NRF_GPIO_IN / 4] = in;
+    g->regs[g->layout->in / 4] = in;
 }
 
 void nrf_gpio_publish(struct nrf_gpio_bank *g)
@@ -97,7 +113,7 @@ void nrf_gpio_publish(struct nrf_gpio_bank *g)
         mm_u32 pull = (cnf >> CNF_PULL_SHIFT) & 3u;
         struct mm_gpio_pad_config cfg;
         memset(&cfg, 0, sizeof(cfg));
-        cfg.mode = (g->regs[NRF_GPIO_DIR / 4] & bit) != 0u ? MM_GPIO_MODE_OUTPUT : MM_GPIO_MODE_INPUT;
+        cfg.mode = (g->regs[g->layout->dir / 4] & bit) != 0u ? MM_GPIO_MODE_OUTPUT : MM_GPIO_MODE_INPUT;
         cfg.open_drain = open_drain(cnf) ? 1u : 0u;
         cfg.pull = pull == CNF_PULL_UP ? MM_GPIO_PULL_UP : pull == CNF_PULL_DOWN ? MM_GPIO_PULL_DOWN : MM_GPIO_PULL_NONE;
         if (!g->pub_valid || memcmp(&cfg, &g->pub_cfg[pin], sizeof(cfg)) != 0) {
@@ -130,14 +146,14 @@ mm_bool nrf_gpio_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 *va
     struct nrf_gpio_bank *g = (struct nrf_gpio_bank *)opaque;
     if (g == 0 || value_out == 0 || size_bytes == 0 || size_bytes > 4) return MM_FALSE;
     if ((offset + size_bytes) > NRF_GPIO_SIZE) return MM_FALSE;
-    if (offset >= NRF_GPIO_PIN_CNF0 && size_bytes == 4) {
-        mm_u32 pin = (offset - NRF_GPIO_PIN_CNF0) / 4u;
+    if (offset >= g->layout->pin_cnf0 && size_bytes == 4) {
+        mm_u32 pin = (offset - g->layout->pin_cnf0) / 4u;
         if (pin < 32u) {
             *value_out = g->pin_cnf[pin];
             return MM_TRUE;
         }
     }
-    if ((offset & ~3u) == NRF_GPIO_IN) sync_inputs(g);
+    if ((offset & ~3u) == g->layout->in) sync_inputs(g);
     *value_out = slice(g->regs[offset / 4], offset & 3u, size_bytes);
     return MM_TRUE;
 }
@@ -149,10 +165,10 @@ mm_bool nrf_gpio_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 va
     mm_u32 *dir;
     if (g == 0 || size_bytes == 0 || size_bytes > 4) return MM_FALSE;
     if ((offset + size_bytes) > NRF_GPIO_SIZE) return MM_FALSE;
-    out = &g->regs[NRF_GPIO_OUT / 4];
-    dir = &g->regs[NRF_GPIO_DIR / 4];
-    if (offset >= NRF_GPIO_PIN_CNF0 && size_bytes == 4) {
-        mm_u32 pin = (offset - NRF_GPIO_PIN_CNF0) / 4u;
+    out = &g->regs[g->layout->out / 4];
+    dir = &g->regs[g->layout->dir / 4];
+    if (offset >= g->layout->pin_cnf0 && size_bytes == 4) {
+        mm_u32 pin = (offset - g->layout->pin_cnf0) / 4u;
         if (pin < 32u) {
             g->pin_cnf[pin] = value;
             /* PIN_CNF.DIR and the DIR register are one bit. */
@@ -162,14 +178,14 @@ mm_bool nrf_gpio_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 va
             return MM_TRUE;
         }
     }
-    if (size_bytes == 4 && offset == NRF_GPIO_OUT) *out = value;
-    else if (size_bytes == 4 && offset == NRF_GPIO_OUTSET) *out |= value;
-    else if (size_bytes == 4 && offset == NRF_GPIO_OUTCLR) *out &= ~value;
-    else if (size_bytes == 4 && (offset == NRF_GPIO_DIR || offset == NRF_GPIO_DIRSET ||
-                                 offset == NRF_GPIO_DIRCLR)) {
+    if (size_bytes == 4 && offset == g->layout->out) *out = value;
+    else if (size_bytes == 4 && offset == g->layout->outset) *out |= value;
+    else if (size_bytes == 4 && offset == g->layout->outclr) *out &= ~value;
+    else if (size_bytes == 4 && (offset == g->layout->dir || offset == g->layout->dirset ||
+                                 offset == g->layout->dirclr)) {
         mm_u32 old = *dir;
         mm_u32 pin;
-        *dir = offset == NRF_GPIO_DIR ? value : offset == NRF_GPIO_DIRSET ? (old | value) : (old & ~value);
+        *dir = offset == g->layout->dir ? value : offset == g->layout->dirset ? (old | value) : (old & ~value);
         for (pin = 0; pin < 32u; ++pin) {
             if ((*dir >> pin) & 1u) g->pin_cnf[pin] |= CNF_DIR;
             else g->pin_cnf[pin] &= ~CNF_DIR;

@@ -20,9 +20,25 @@
 #define NRF_GPIO_DIRCLR    0x01Cu
 #define NRF_GPIO_PIN_CNF0  0x200u
 
+/* Register offsets: nRF52/53 (the default) or nRF54L, which starts at OUT. */
+struct nrf_gpio_layout {
+    mm_u32 out;
+    mm_u32 outset;
+    mm_u32 outclr;
+    mm_u32 in;
+    mm_u32 dir;
+    mm_u32 dirset;
+    mm_u32 dirclr;
+    mm_u32 pin_cnf0;
+};
+
+extern const struct nrf_gpio_layout nrf_gpio_layout_nrf53;
+extern const struct nrf_gpio_layout nrf_gpio_layout_nrf54l;
+
 struct nrf_gpio_bank {
     mm_u32 regs[NRF_GPIO_SIZE / 4];
     mm_u32 pin_cnf[32];
+    const struct nrf_gpio_layout *layout;
     int index;          /* port number: pads are reported as bank `index` */
     int pins;
     mm_u32 ext_valid;   /* pins an external circuit drives */
@@ -34,6 +50,7 @@ struct nrf_gpio_bank {
 };
 
 void nrf_gpio_bank_init(struct nrf_gpio_bank *g, int index, int pins);
+void nrf_gpio_bank_set_layout(struct nrf_gpio_bank *g, const struct nrf_gpio_layout *layout);
 mm_bool nrf_gpio_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 *value_out);
 mm_bool nrf_gpio_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 value);
 /* An external circuit drives `pin`; undriven input pins read it. */

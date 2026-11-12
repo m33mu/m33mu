@@ -226,8 +226,8 @@ static int test_gpio_pads_per_target(void)
           { { 0x400040C0u, 1u << 4 }, { 0x400040C8u, 1u << 2 } }, 2 },
         { "pic32ck", 0x0C000000u, 0x20080000u, "PD20",
           { { 0x44800188u, 1u << 20 }, { 0x44800198u, 1u << 20 } }, 2 },
-        { "nrf54lm20", 0x10000000u, 0x30080000u, "P1.05",
-          { { 0x500D8218u, 1u << 5 }, { 0x500D8208u, 1u << 5 } }, 2 },
+        { "nrf54lm20", 0x00000000u, 0x20080000u, "P1.05",
+          { { 0x500D8214u, 1u << 5 }, { 0x500D8204u, 1u << 5 } }, 2 },
     };
     size_t c;
     for (c = 0; c < sizeof(cases) / sizeof(cases[0]); ++c) {

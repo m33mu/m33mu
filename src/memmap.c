@@ -36,6 +36,10 @@ static struct mm_memmap *g_current_map = 0;
     ((map)->interceptor == 0 || \
      (map)->interceptor((map)->interceptor_opaque, (type), (sec), (addr), (size)))
 
+#define MM_FILTER_OK(map, type, sec, addr, size) \
+    ((map)->access_filter == 0 || \
+     (map)->access_filter((map)->access_filter_opaque, (type), (sec), (addr), (size), MM_FALSE))
+
 static mm_bool read_buf_le(const mm_u8 *buf, mm_u32 offset, mm_u32 size, mm_u32 *value_out)
 {
     mm_u32 v;
@@ -296,6 +300,8 @@ void mm_memmap_init(struct mm_memmap *map, struct mmio_region *regions, size_t r
     map->bus_attr_opaque = 0;
     map->write_observer = 0;
     map->write_observer_opaque = 0;
+    map->access_filter = 0;
+    map->access_filter_opaque = 0;
     map->code_cache = 0;
     map->flash_base_s = map->flash_base_ns = 0;
     map->flash_size_s = map->flash_size_ns = 0;
@@ -397,6 +403,13 @@ void mm_memmap_set_write_observer(struct mm_memmap *map, mm_write_observer fn, v
     map->write_observer_opaque = opaque;
 }
 
+void mm_memmap_set_access_filter(struct mm_memmap *map, mm_access_filter fn, void *opaque)
+{
+    if (map == 0) return;
+    map->access_filter = fn;
+    map->access_filter_opaque = opaque;
+}
+
 mm_bool mm_memmap_configure_flash(struct mm_memmap *map, const struct mm_target_cfg *cfg, const mm_u8 *backing, mm_bool secure_view)
 {
     if (map == 0 || cfg == 0 || backing == 0) {
@@ -475,6 +488,9 @@ mm_bool mm_memmap_read(const struct mm_memmap *map, enum mm_sec_state sec, mm_u3
         return MM_FALSE;
     }
     if (!MM_INTERCEPT_OK(map, MM_ACCESS_READ, sec, addr, size)) {
+        return MM_FALSE;
+    }
+    if (!MM_FILTER_OK(map, MM_ACCESS_READ, sec, addr, size)) {
         return MM_FALSE;
     }
     /* Flash */
@@ -591,6 +607,9 @@ mm_bool mm_memmap_write(struct mm_memmap *map, enum mm_sec_state sec, mm_u32 add
         return MM_FALSE;
     }
     if (!MM_INTERCEPT_OK(map, MM_ACCESS_WRITE, sec, addr, size)) {
+        return MM_FALSE;
+    }
+    if (!MM_FILTER_OK(map, MM_ACCESS_WRITE, sec, addr, size)) {
         return MM_FALSE;
     }
     if (g_memwatch_enabled) {
@@ -723,6 +742,9 @@ mm_bool mm_memmap_fetch_read16(const struct mm_memmap *map, enum mm_sec_state se
     if (!MM_INTERCEPT_OK(map, MM_ACCESS_EXEC, sec, addr, 2u)) {
         return MM_FALSE;
     }
+    if (!MM_FILTER_OK(map, MM_ACCESS_EXEC, sec, addr, 2u)) {
+        return MM_FALSE;
+    }
     /* Execute from flash only for now. */
     if (map->flash.buffer != 0) {
         (void)sec;
@@ -784,14 +806,19 @@ mm_bool mm_memmap_fetch_read16(const struct mm_memmap *map, enum mm_sec_state se
     return MM_FALSE;
 }
 
-mm_bool mm_memmap_read8(const struct mm_memmap *map, enum mm_sec_state sec, mm_u32 addr, mm_u8 *value_out)
+static mm_bool memmap_read8(const struct mm_memmap *map, enum mm_sec_state sec, mm_u32 addr,
+                            mm_u8 *value_out, mm_bool dma)
 {
     mm_u32 base;
     mm_u32 size_limit;
     if (map == 0 || value_out == 0) {
         return MM_FALSE;
     }
-    if (!MM_INTERCEPT_OK(map, MM_ACCESS_READ, sec, addr, 1u)) {
+    if (!dma && !MM_INTERCEPT_OK(map, MM_ACCESS_READ, sec, addr, 1u)) {
+        return MM_FALSE;
+    }
+    if (map->access_filter != 0 &&
+        !map->access_filter(map->access_filter_opaque, MM_ACCESS_READ, sec, addr, 1u, dma)) {
         return MM_FALSE;
     }
     if (map->flash.buffer != 0) {
@@ -871,7 +898,8 @@ mm_bool mm_memmap_read8(const struct mm_memmap *map, enum mm_sec_state sec, mm_u
     return MM_FALSE;
 }
 
-mm_bool mm_memmap_write8(struct mm_memmap *map, enum mm_sec_state sec, mm_u32 addr, mm_u8 value)
+static mm_bool memmap_write8(struct mm_memmap *map, enum mm_sec_state sec, mm_u32 addr,
+                             mm_u8 value, mm_bool dma)
 {
     mm_u8 *buf;
     mm_u8 old_bytes[1];
@@ -880,7 +908,11 @@ mm_bool mm_memmap_write8(struct mm_memmap *map, enum mm_sec_state sec, mm_u32 ad
     if (map == 0) {
         return MM_FALSE;
     }
-    if (!MM_INTERCEPT_OK(map, MM_ACCESS_WRITE, sec, addr, 1u)) {
+    if (!dma && !MM_INTERCEPT_OK(map, MM_ACCESS_WRITE, sec, addr, 1u)) {
+        return MM_FALSE;
+    }
+    if (map->access_filter != 0 &&
+        !map->access_filter(map->access_filter_opaque, MM_ACCESS_WRITE, sec, addr, 1u, dma)) {
         return MM_FALSE;
     }
     if (map->ram.buffer != 0) {
@@ -908,6 +940,26 @@ mm_bool mm_memmap_write8(struct mm_memmap *map, enum mm_sec_state sec, mm_u32 ad
         return MM_TRUE;
     }
     return MM_FALSE;
+}
+
+mm_bool mm_memmap_read8(const struct mm_memmap *map, enum mm_sec_state sec, mm_u32 addr, mm_u8 *value_out)
+{
+    return memmap_read8(map, sec, addr, value_out, MM_FALSE);
+}
+
+mm_bool mm_memmap_write8(struct mm_memmap *map, enum mm_sec_state sec, mm_u32 addr, mm_u8 value)
+{
+    return memmap_write8(map, sec, addr, value, MM_FALSE);
+}
+
+mm_bool mm_memmap_dma_read8(const struct mm_memmap *map, enum mm_sec_state sec, mm_u32 addr, mm_u8 *value_out)
+{
+    return memmap_read8(map, sec, addr, value_out, MM_TRUE);
+}
+
+mm_bool mm_memmap_dma_write8(struct mm_memmap *map, enum mm_sec_state sec, mm_u32 addr, mm_u8 value)
+{
+    return memmap_write8(map, sec, addr, value, MM_TRUE);
 }
 
 mm_bool mm_memmap_write_ram_raw(struct mm_memmap *map, mm_u32 addr, mm_u32 size, mm_u32 value)

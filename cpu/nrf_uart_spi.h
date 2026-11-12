@@ -23,6 +23,11 @@ struct nrf_serial_config {
     mm_bool starttx_sets_txdrdy;
     mm_bool endtx_only_when_nonzero;
     mm_bool explicit_event_window;
+    /* nRF54 layout: TASKS_DMA/EVENTS_DMA and DMA.RX/DMA.TX register groups. */
+    mm_bool dma_regs;
+    /* Optional: security of the EasyDMA transactions of the instance at
+     * `base`. Unset, DMA carries the security of the triggering access. */
+    enum mm_sec_state (*dma_sec)(mm_u32 base);
     /* One address per instance: no base + 0x10000000 alias (nRF5340 net) */
     mm_bool single_view;
 };

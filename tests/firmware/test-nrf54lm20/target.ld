@@ -1,8 +1,8 @@
 /* Minimal linker script for nRF54LM20 (application) memory map */
 MEMORY
 {
-    FLASH (rx)  : ORIGIN = 0x10000000, LENGTH = 0x001FD000
-    RAM   (rwx) : ORIGIN = 0x30000000, LENGTH = 0x00080000
+    FLASH (rx)  : ORIGIN = 0x00000000, LENGTH = 0x001FD000
+    RAM   (rwx) : ORIGIN = 0x20000000, LENGTH = 0x00080000
 }
 
 _estack = ORIGIN(RAM) + LENGTH(RAM);

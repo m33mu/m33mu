@@ -69,6 +69,10 @@
 #include "nrf5340net/nrf5340net_timers.h"
 #include "nrf5340net/nrf5340net_uart_spi.h"
 #include "nrf5340net/cpu_config.h"
+#include "nrf54l15/nrf54l15_mmio.h"
+#include "nrf54l15/nrf54l15_timers.h"
+#include "nrf54l15/nrf54l15_uart_spi.h"
+#include "nrf54l15/cpu_config.h"
 #include "nrf54lm20/nrf54lm20_mmio.h"
 #include "nrf54lm20/nrf54lm20_timers.h"
 #include "nrf54lm20/nrf54lm20_uart_spi.h"
@@ -519,6 +523,52 @@ static const struct mm_cpu_entry cpu_table[] = {
         }
     },
     {
+        "nrf54l15",
+        {
+            NRF54L15_FLASH_BASE_S,
+            NRF54L15_FLASH_SIZE,
+            NRF54L15_FLASH_BASE_NS,
+            NRF54L15_FLASH_SIZE,
+            0,
+            0,
+            NRF54L15_RAM_BASE_S,
+            NRF54L15_RAM_SIZE,
+            NRF54L15_RAM_BASE_NS,
+            NRF54L15_RAM_SIZE,
+            1,
+            NRF54L15_RAM_REGIONS,
+            NRF54L15_RAM_REGION_COUNT,
+            NRF54L15_MPCBB_BLOCK_SIZE,
+            0,
+            NRF54L15_FLAGS,
+            NRF54L15_SOC_RESET,
+            NRF54L15_SOC_REGISTER,
+            NRF54L15_FLASH_BIND,
+            NRF54L15_CLOCK_GET_HZ,
+            NRF54L15_USART_INIT,
+            NRF54L15_USART_RESET,
+            NRF54L15_USART_POLL,
+            NRF54L15_SPI_INIT,
+            NRF54L15_SPI_RESET,
+            NRF54L15_SPI_POLL,
+            0,
+            0,
+            0,
+            NRF54L15_TIMER_INIT,
+            NRF54L15_TIMER_RESET,
+            NRF54L15_TIMER_TICK,
+            NRF54L15_TZ_ATTR,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
         "nrf54lm20",
         {
             NRF54LM20_FLASH_BASE_S,
@@ -553,7 +603,7 @@ static const struct mm_cpu_entry cpu_table[] = {
             NRF54LM20_TIMER_INIT,
             NRF54LM20_TIMER_RESET,
             NRF54LM20_TIMER_TICK,
-            0,
+            NRF54LM20_TZ_ATTR,
             0,
             0,
             0,

@@ -5,7 +5,8 @@
 #include "m33mu/nvic.h"
 
 #define NRF_TIMER_SIZE 0x1000u
-#define NRF_TIMER_MAX_CC 6u
+#define NRF_TIMER_MAX_CC 8u
+#define NRF_TIMER_DEFAULT_CC 6u
 #define NRF_TIMER_MAX_INSTANCES 7u
 
 struct nrf_timers_state;
@@ -18,6 +19,7 @@ struct nrf_timer_state {
     mm_u64 accum;
     mm_bool running;
     int irq;
+    mm_u32 cc_count;
 };
 
 struct nrf_timers_state {
@@ -36,5 +38,7 @@ void nrf_timers_register(struct nrf_timers_state *state,
                          const int *irqs,
                          size_t count);
 void nrf_timers_reset(struct nrf_timers_state *state);
+/* Instances default to NRF_TIMER_DEFAULT_CC compare channels. */
+void nrf_timer_set_cc_count(struct nrf_timers_state *state, size_t index, mm_u32 count);
 
 #endif /* M33MU_NRF_TIMERS_H */

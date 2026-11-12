@@ -32,6 +32,8 @@ static const struct nrf_serial_config g_cfg = {
     MM_FALSE,
     MM_FALSE,
     MM_FALSE,
+    MM_FALSE,
+    0,
     MM_FALSE
 };
 

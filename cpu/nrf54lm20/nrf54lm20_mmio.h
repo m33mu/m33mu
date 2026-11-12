@@ -3,6 +3,7 @@
 
 #include "m33mu/mmio.h"
 #include "m33mu/nvic.h"
+#include "m33mu/sau.h"
 
 struct mm_memmap;
 struct mm_flash_persist;
@@ -15,7 +16,8 @@ void mm_nrf54lm20_flash_bind(struct mm_memmap *map,
                              mm_u32 flags);
 mm_u64 mm_nrf54lm20_cpu_hz(void);
 void mm_nrf54lm20_mmio_reset(void);
-void mm_nrf54lm20_mmio_set_nvic(struct mm_nvic *nvic);
-void mm_nrf54lm20_grtc_tick(mm_u64 cycles);
+mm_bool mm_nrf54lm20_tz_attr_for_addr(mm_u32 addr,
+                                      enum mm_sau_attr *attr_out,
+                                      mm_u32 *region_out);
 
 #endif /* M33MU_NRF54LM20_MMIO_H */

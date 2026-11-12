@@ -5582,6 +5582,12 @@ int main(int argc, char **argv)
                 mm_prot_add_region(&execution.protection[0], 0x00000000u, 0x00001000u, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_SECURE);
                 mm_prot_add_region(&execution.protection[0], 0x00000000u, 0x00001000u, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_NONSECURE);
             }
+            if (cpu_name != 0 && strncmp(cpu_name, "nrf54l", 6) == 0) {
+                /* nRF54L FICR above the RRAM, and the ICACHE in the vendor PPB. */
+                mm_prot_add_region(&execution.protection[0], 0x00FFC000u, 0x00001000u, MM_PROT_PERM_READ, MM_SECURE);
+                mm_prot_add_region(&execution.protection[0], 0x00FFC000u, 0x00001000u, MM_PROT_PERM_READ, MM_NONSECURE);
+                mm_prot_add_region(&execution.protection[0], 0xE0082000u, 0x00001000u, MM_PROT_PERM_READ | MM_PROT_PERM_WRITE, MM_SECURE);
+            }
             if (cpu_name != 0 && strcmp(cpu_name, "nrf5340") == 0) {
                 mm_prot_add_region(&execution.protection[0], 0x00000000u, execution.target.flash_size_ns,
                                    MM_PROT_PERM_READ | MM_PROT_PERM_WRITE | MM_PROT_PERM_EXEC, MM_SECURE);

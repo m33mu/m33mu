@@ -68,6 +68,10 @@ jobs:
         run: build/m33mu --cpu nrf5340net tests/firmware/test-nrf5340net/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
       - name: Run nRF54LM20 firmware test
         run: build/m33mu  tests/firmware/test-nrf54lm20/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu nrf54lm20 --quit-on-faults
+      - name: Run nRF54L15 / nRF54LM20 wolfBoot HAL sequence tests
+        run: |
+          build/m33mu tests/firmware/test-nrf54l/app-nrf54l15.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu nrf54l15 --quit-on-faults
+          build/m33mu tests/firmware/test-nrf54l/app-nrf54lm20.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu nrf54lm20 --quit-on-faults
       - name: Run STM32H5 firmware test (Floating point instructions)
         run: build/m33mu tests/firmware/test-fpu-instructions/app.bin --uart-stdout --expect-bkpt 0x7f --timeout 60 --quit-on-faults
       - name: Run RTOS exception firmware test

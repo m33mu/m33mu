@@ -49,7 +49,7 @@ void mm_nrf5340net_timers_tick(mm_u64 cycles)
         old = t->counter;
         now = (old + (mm_u32)ticks) & mask;
         t->counter = now;
-        for (ch = 0; ch < NRF_TIMER_MAX_CC; ++ch) {
+        for (ch = 0; ch < t->cc_count; ++ch) {
             mm_u32 cc = t->cc[ch] & mask;
             if (old <= now) {
                 if (cc > old && cc <= now) {
