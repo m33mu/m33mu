@@ -46,6 +46,7 @@
 #include "m33mu/code_cache.h"
 #include "m33mu/trace.h"
 #include "mcxn947/mcxn947_romapi.h"
+#include "mcxa153/mcxa153_romapi.h"
 #include "lpc55s69/lpc55s69_romapi.h"
 #include "rw612/rw612_romapi.h"
 #include "rw612/cpu_config.h"
@@ -5577,6 +5578,14 @@ int main(int argc, char **argv)
                 mm_prot_add_region(&execution.protection[0], 0x01100000u, 0x00000100u, MM_PROT_PERM_READ, MM_SECURE);
                 mm_prot_add_region(&execution.protection[0], 0x01100000u, 0x00000100u, MM_PROT_PERM_READ, MM_NONSECURE);
                 mm_prot_add_region(&execution.protection[0], 0x11100000u, 0x00000100u, MM_PROT_PERM_READ, MM_SECURE);
+            }
+            if (cpu_name != 0 && strcmp(cpu_name, "mcxa153") == 0) {
+                /* MCXA153 boot ROM window with the ROM API tree; no TrustZone,
+                 * so one address serves both security states. */
+                mm_prot_add_region(&execution.protection[0], MCXA153_ROMAPI_BASE, MCXA153_ROMAPI_SIZE,
+                                   MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_SECURE);
+                mm_prot_add_region(&execution.protection[0], MCXA153_ROMAPI_BASE, MCXA153_ROMAPI_SIZE,
+                                   MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_NONSECURE);
             }
             if (cpu_name != 0 && strcmp(cpu_name, "lpc55s69") == 0) {
                 /* LPC55S69 ROM is at 0x03000000 (NS alias) / 0x13000000 (S alias).

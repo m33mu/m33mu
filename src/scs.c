@@ -369,7 +369,7 @@ static mm_u32 scs_read_scb_reg(const struct mm_scs_mmio *ctx, struct mm_scs *scs
     case 0x240: val = scs->fpu_present ? scs->mvfr0 : 0u; break;
     case 0x244: val = scs->fpu_present ? scs->mvfr1 : 0u; break;
     case 0x248: val = scs->fpu_present ? scs->mvfr2 : 0u; break;
-    case 0x90: val = scs->mpu_type; break;
+    case 0x90: val = scs->mpu_present ? scs->mpu_type : 0u; break;
     case 0x94: val = (eff_sec == MM_NONSECURE) ? scs->mpu_ctrl_ns : scs->mpu_ctrl_s; break;
     case 0x98: val = (eff_sec == MM_NONSECURE) ? scs->mpu_rnr_ns : scs->mpu_rnr_s; break;
     case 0x9C: {
@@ -708,6 +708,7 @@ void mm_scs_init(struct mm_scs *scs, mm_u32 cpuid_const)
     scs->mvfr1 = 0;
     scs->mvfr2 = 0;
     scs->fpu_present = MM_FALSE;
+    scs->mpu_present = MM_TRUE;
     scs->mpu_type = MPU_TYPE_8REGIONS; /* 8 regions, ARMv8‑M MPU */
     scs->mpu_ctrl_s = 0;
     scs->mpu_ctrl_ns = 0;
@@ -806,6 +807,19 @@ void mm_scs_set_vectactive(struct mm_scs *scs, enum mm_sec_state sec,
     }
     icsr = (sec == MM_NONSECURE) ? &scs->icsr_ns : &scs->icsr_s;
     *icsr = (*icsr & ~0x1FFu) | (exc_num & 0x1FFu);
+}
+
+void mm_scs_set_mpu_present(struct mm_scs *scs, mm_bool present)
+{
+    if (scs == 0) {
+        return;
+    }
+    scs->mpu_present = present ? MM_TRUE : MM_FALSE;
+    scs->mpu_type = scs->mpu_present ? MPU_TYPE_8REGIONS : 0u;
+    if (!scs->mpu_present) {
+        scs->mpu_ctrl_s = 0;
+        scs->mpu_ctrl_ns = 0;
+    }
 }
 
 void mm_scs_set_fpu_present(struct mm_scs *scs, mm_bool present)
@@ -1125,6 +1139,7 @@ static mm_bool scs_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 
         return MM_TRUE;
     /* MPU (banked) */
     case 0x94:
+        if (!scs->mpu_present) return MM_TRUE;
         if (eff_sec == MM_NONSECURE) scs->mpu_ctrl_ns = value;
         else scs->mpu_ctrl_s = value;
         if (g_meminfo_enabled) {
@@ -1134,6 +1149,7 @@ static mm_bool scs_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 
         }
         return MM_TRUE;
     case 0x98:
+        if (!scs->mpu_present) return MM_TRUE;
         if (eff_sec == MM_NONSECURE) scs->mpu_rnr_ns = value & 0x7u;
         else scs->mpu_rnr_s = value & 0x7u;
         if (g_meminfo_enabled) {
@@ -1143,6 +1159,7 @@ static mm_bool scs_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 
         }
         return MM_TRUE;
     case 0x9C:
+        if (!scs->mpu_present) return MM_TRUE;
         if (eff_sec == MM_NONSECURE) scs->mpu_rbar_ns[scs->mpu_rnr_ns & 0x7u] = value;
         else scs->mpu_rbar_s[scs->mpu_rnr_s & 0x7u] = value;
         if (g_meminfo_enabled) {
@@ -1156,6 +1173,7 @@ static mm_bool scs_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 
         }
         return MM_TRUE;
     case 0xA0:
+        if (!scs->mpu_present) return MM_TRUE;
         if (eff_sec == MM_NONSECURE) scs->mpu_rlar_ns[scs->mpu_rnr_ns & 0x7u] = value;
         else scs->mpu_rlar_s[scs->mpu_rnr_s & 0x7u] = value;
         if (g_meminfo_enabled) {
@@ -1178,6 +1196,7 @@ static mm_bool scs_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 
         }
         return MM_TRUE;
     case 0xC0:
+        if (!scs->mpu_present) return MM_TRUE;
         if (eff_sec == MM_NONSECURE) scs->mpu_mair0_ns = value;
         else scs->mpu_mair0_s = value;
         if (g_meminfo_enabled) {
@@ -1187,6 +1206,7 @@ static mm_bool scs_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 
         }
         return MM_TRUE;
     case 0xC4:
+        if (!scs->mpu_present) return MM_TRUE;
         if (eff_sec == MM_NONSECURE) scs->mpu_mair1_ns = value;
         else scs->mpu_mair1_s = value;
         if (g_meminfo_enabled) {

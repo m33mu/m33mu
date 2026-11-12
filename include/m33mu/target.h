@@ -148,5 +148,9 @@ struct mm_target_cfg {
  * off (i.MX RT700): images linked at the non-secure aliases still run Secure,
  * so neither --no-tz nor the non-secure-stack heuristic demotes the core. */
 #define MM_TARGET_FLAG_SECURE_BOOT (1u << 5)
+/* The core has no MPU (__MPU_PRESENT 0): MPU_TYPE reads 0 and the MPU
+ * registers are RAZ/WI, so firmware that enables an MPU only when one is
+ * reported keeps running unprotected, as on silicon. */
+#define MM_TARGET_FLAG_NO_MPU (1u << 6)
 
 #endif /* M33MU_TARGET_H */

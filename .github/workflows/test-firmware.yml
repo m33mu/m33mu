@@ -66,6 +66,8 @@ jobs:
         run: build/m33mu  tests/firmware/test-nrf5340/app.bin --spiflash:SPI0:file=/tmp/flash.bin:size=4096:mmap=0x60000000:cs=PB0 --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu nrf5340 --quit-on-faults
       - name: Run nRF5340 network core firmware test (LFCLK, RTC0, IPC, NVMC, UARTE0)
         run: build/m33mu --cpu nrf5340net tests/firmware/test-nrf5340net/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+      - name: Run MCXA153 firmware test (FRO96M clocking, ROM API flash, LPUART0)
+        run: build/m33mu --cpu mcxa153 --no-tz tests/firmware/test-mcxa153/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
       - name: Run nRF54LM20 firmware test
         run: build/m33mu  tests/firmware/test-nrf54lm20/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --cpu nrf54lm20 --quit-on-faults
       - name: Run nRF54L15 / nRF54LM20 wolfBoot HAL sequence tests

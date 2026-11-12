@@ -62,6 +62,9 @@
 #include "mcxn947/mcxn947_timers.h"
 #include "mcxn947/mcxn947_flexcomm.h"
 #include "mcxn947/cpu_config.h"
+#include "mcxa153/mcxa153_mmio.h"
+#include "mcxa153/mcxa153_usart.h"
+#include "mcxa153/cpu_config.h"
 #include "nrf5340/nrf5340_mmio.h"
 #include "nrf5340/nrf5340_timers.h"
 #include "nrf5340/nrf5340_uart_spi.h"
@@ -419,6 +422,52 @@ static const struct mm_cpu_entry cpu_table[] = {
             MCXN947_TIMER_INIT,
             MCXN947_TIMER_RESET,
             MCXN947_TIMER_TICK,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
+        "mcxa153",
+        {
+            MCXA153_FLASH_BASE_S,
+            MCXA153_FLASH_SIZE,
+            MCXA153_FLASH_BASE_NS,
+            MCXA153_FLASH_SIZE,
+            0,
+            0,
+            MCXA153_RAM_BASE_S,
+            MCXA153_RAM_SIZE,
+            MCXA153_RAM_BASE_NS,
+            MCXA153_RAM_SIZE,
+            1,
+            MCXA153_RAM_REGIONS,
+            MCXA153_RAM_REGION_COUNT,
+            MCXA153_MPCBB_BLOCK_SIZE,
+            0,
+            MCXA153_FLAGS,
+            MCXA153_SOC_RESET,
+            MCXA153_SOC_REGISTER,
+            MCXA153_FLASH_BIND,
+            MCXA153_CLOCK_GET_HZ,
+            MCXA153_USART_INIT,
+            MCXA153_USART_RESET,
+            MCXA153_USART_POLL,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
             0,
             0,
             0,

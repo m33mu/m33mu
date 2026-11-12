@@ -11,6 +11,8 @@ These values are accepted by `--cpu`:
 - `mcxw71c` — NXP MCX W71 / MCXW716C (Cortex-M33, TrustZone, FMU0 flash)
 - `mcxn947`
 - `rw612` — NXP RW612 (Cortex-M33, FlexSPI NOR boot, ROM FlexSPI driver, ELS / PKA crypto offload)
+- `mcxa153` — NXP MCX A153 (Cortex-M33 without TrustZone, DSP, FPU or MPU; flash through the ROM API)
+- `rw612` — NXP RW612 (Cortex-M33 + ELS / PKA crypto offload)
 - `nrf5340`
 - `nrf5340net` — Nordic nRF5340 network core (Cortex-M33 without TrustZone, DSP or FPU; flash at 0x01000000, 2 KB NVMC pages)
 - `nrf54l15` — Nordic nRF54L15 (Cortex-M33, TrustZone through SPU / MPC)
