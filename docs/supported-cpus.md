@@ -9,6 +9,7 @@ These values are accepted by `--cpu`:
 - `stm32l552`
 - `stm32wba55` — STM32WBA55CG (Cortex-M33, TrustZone, 1 MB single-bank flash)
 - `stm32u385` — STM32U385RG (Cortex-M33, TrustZone, 1 MB dual-bank flash, 4 KB pages)
+- `stm32c5a3` — STM32C5A3ZG (Cortex-M33 without TrustZone, 1 MB dual-bank flash, 8 KB pages)
 - `lpc55s69`
 - `mcxw71c` — NXP MCX W71 / MCXW716C (Cortex-M33, TrustZone, FMU0 flash)
 - `mcxn947`
@@ -141,6 +142,20 @@ These values are accepted by `--cpu`:
   only all-zero data; anything else is `PROGERR` with nothing written (RM0487 7.3.7).
   `PNB` and `MER1`/`MER2` address the bank `BKER` selects. `NSCR` is read-only while
   `LOCK` is set; `OPTKEYR` unlocks `OPTLOCK`, `OBL_LAUNCH` resets the device.
+
+### STM32C5A3 notes
+
+- **No TrustZone.** The part has no SAU and no secure aliases: one view of the flash,
+  SRAM and peripherals. `--no-tz` is accepted and changes nothing.
+- **Modelled:** RCC at `0x44020C00` (HSIS/HSIDIV3/PSIS/HSE ready bits, SYSCLK selection;
+  only the 144 MHz PSI output is known), PWR as a register file, the flash controller,
+  ICACHE, GPIO A-H, USART1-3/UART4-5/LPUART1.
+- **Flash.** The STM32H5 controller with two banks of 64 pages of 8 KB: the 128-bit write
+  buffer (`WBNE`, `INCERR`, `FW`), `PGSERR` for a flash word programmed twice or an erase
+  with `WBNE` set, `BKSEL`/`PNB`/`BER` naming physical banks whatever the mapping, `CCR`
+  clearing the status flags. With `--dualbank`, an option change (`OPTKEYR`, `OPTSR_PRG`,
+  `OPTCR.OPTSTRT`) programs `SWAP_BANK`, shown in `OPTSR_CUR` and applied at the next
+  reset, when `OPTCR.SWAP_BANK` tells which mapping is in force.
 
 ### i.MX RT700 notes
 

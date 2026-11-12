@@ -59,6 +59,9 @@
 #include "stm32u385/stm32u385_mmio.h"
 #include "stm32u385/stm32u385_usart.h"
 #include "stm32u385/cpu_config.h"
+#include "stm32c5a3/stm32c5a3_mmio.h"
+#include "stm32c5a3/stm32c5a3_usart.h"
+#include "stm32c5a3/cpu_config.h"
 #include "mcxw71c/mcxw71c_mmio.h"
 #include "mcxw71c/mcxw71c_timers.h"
 #include "mcxw71c/mcxw71c_usart.h"
@@ -421,6 +424,52 @@ static const struct mm_cpu_entry cpu_table[] = {
             STM32U385_USART_INIT,
             STM32U385_USART_RESET,
             STM32U385_USART_POLL,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
+        "stm32c5a3",
+        {
+            STM32C5A3_FLASH_BASE_S,
+            STM32C5A3_FLASH_SIZE,
+            STM32C5A3_FLASH_BASE_NS,
+            STM32C5A3_FLASH_SIZE,
+            0,
+            0,
+            STM32C5A3_RAM_BASE_S,
+            STM32C5A3_RAM_SIZE,
+            STM32C5A3_RAM_BASE_NS,
+            STM32C5A3_RAM_SIZE,
+            1,
+            STM32C5A3_RAM_REGIONS,
+            STM32C5A3_RAM_REGION_COUNT,
+            0,
+            0,
+            STM32C5A3_FLAGS,
+            STM32C5A3_SOC_RESET,
+            STM32C5A3_SOC_REGISTER,
+            STM32C5A3_FLASH_BIND,
+            STM32C5A3_CLOCK_GET_HZ,
+            STM32C5A3_USART_INIT,
+            STM32C5A3_USART_RESET,
+            STM32C5A3_USART_POLL,
             0,
             0,
             0,
