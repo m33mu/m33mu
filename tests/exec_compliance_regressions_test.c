@@ -784,6 +784,74 @@ static int test_exclusive_unaligned_raise_usagefault(void)
     return 0;
 }
 
+static int test_acquire_release_execute(void)
+{
+    struct mm_cpu cpu;
+    struct mm_memmap map;
+    struct mm_scs scs;
+    struct mm_decoded dec;
+    mm_u8 ram[64];
+    mm_u32 value = 0;
+    mm_u8 sizes[3] = { 1u, 2u, 4u };
+    int i;
+
+    memset(&cpu, 0, sizeof(cpu));
+    memset(&scs, 0, sizeof(scs));
+    memset(ram, 0, sizeof(ram));
+    setup_ram_map(&map, ram, sizeof(ram));
+    cpu.sec_state = MM_SECURE;
+    cpu.mode = MM_THREAD;
+    cpu.r[15] = 1u;
+
+    /* STLB/LDAB at an odd address: byte accesses have no alignment rule */
+    cpu.r[0] = 0x20000001u;
+    cpu.r[2] = 0x1234A5u;
+    memset(&dec, 0, sizeof(dec));
+    dec.kind = MM_OP_STL;
+    dec.rn = 0u;
+    dec.rd = 2u;
+    dec.ra = 1u;
+    if (exec_one(&cpu, &map, &scs, 0, &dec) != 0) return 1;
+    if (!mm_memmap_read(&map, cpu.sec_state, 0x20000000u, 4u, &value)) return 1;
+    if (value != 0x0000A500u) return 1;
+    dec.kind = MM_OP_LDA;
+    dec.rd = 1u;
+    if (exec_one(&cpu, &map, &scs, 0, &dec) != 0) return 1;
+    if (cpu.r[1] != 0xA5u) return 1;
+
+    /* aligned word and halfword round trips */
+    for (i = 1; i < 3; ++i) {
+        cpu.r[0] = 0x20000010u;
+        cpu.r[2] = 0xCAFEBABEu;
+        dec.kind = MM_OP_STL;
+        dec.rd = 2u;
+        dec.ra = sizes[i];
+        if (exec_one(&cpu, &map, &scs, 0, &dec) != 0) return 1;
+        dec.kind = MM_OP_LDA;
+        dec.rd = 1u;
+        if (exec_one(&cpu, &map, &scs, 0, &dec) != 0) return 1;
+        if (cpu.r[1] != (sizes[i] == 2u ? 0xBABEu : 0xCAFEBABEu)) return 1;
+    }
+
+    /* misaligned halfword/word acquire-release faults with UNALIGN_TRP clear */
+    scs.ccr = 0u;
+    for (i = 1; i < 3; ++i) {
+        cpu.r[0] = 0x20000011u;
+        g_last_ufsr_bits = 0u;
+        g_raise_usage_fault_calls = 0;
+        dec.kind = MM_OP_LDA;
+        dec.ra = sizes[i];
+        if (exec_one(&cpu, &map, &scs, 0, &dec) != 1) return 1;
+        if (g_raise_usage_fault_calls != 1 || g_last_ufsr_bits != (1u << 24)) return 1;
+        g_last_ufsr_bits = 0u;
+        g_raise_usage_fault_calls = 0;
+        dec.kind = MM_OP_STL;
+        if (exec_one(&cpu, &map, &scs, 0, &dec) != 1) return 1;
+        if (g_raise_usage_fault_calls != 1 || g_last_ufsr_bits != (1u << 24)) return 1;
+    }
+    return 0;
+}
+
 static int test_sub_imm_pc_align_execute(void)
 {
     struct mm_cpu cpu;
@@ -1374,6 +1442,10 @@ int main(void)
     }
     if (test_exclusive_unaligned_raise_usagefault() != 0) {
         printf("FAIL: exclusive_unaligned_raise_usagefault\n");
+        return 1;
+    }
+    if (test_acquire_release_execute() != 0) {
+        printf("FAIL: acquire_release_execute\n");
         return 1;
     }
     if (test_sub_imm_pc_align_execute() != 0) {

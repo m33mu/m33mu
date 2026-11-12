@@ -4469,6 +4469,44 @@ enum mm_exec_status mm_execute_decoded(struct mm_execute_ctx *ctx)
                                               }
                                               mm_cpu_excl_set(&cpu, cpu.sec_state, addr, 2u);
                                           } break;
+                        case MM_OP_LDA: {
+                                              mm_u32 val = 0;
+                                              mm_u32 addr = cpu.r[d.rn];
+                                              /* Acquire forms fault when misaligned, whatever CCR.UNALIGN_TRP says. */
+                                              if ((addr & ((mm_u32)d.ra - 1u)) != 0u) {
+                                                  if (!raise_usage_fault(&cpu, &map, &scs, f.pc_fetch, cpu.xpsr, UFSR_UNALIGNED)) done = MM_TRUE;
+                                                  return MM_EXEC_CONTINUE;
+                                              }
+                                              if (!mm_memmap_read(&map, cpu.sec_state, addr, d.ra, &val)) {
+                                                  if (!raise_mem_fault(&cpu, &map, &scs, f.pc_fetch, cpu.xpsr, addr, MM_FALSE)) done = MM_TRUE;
+                                                  return MM_EXEC_CONTINUE;
+                                              }
+                                              if (d.ra == 1u) {
+                                                  val &= 0xffu;
+                                              } else if (d.ra == 2u) {
+                                                  val &= 0xffffu;
+                                              }
+                                              if (d.rd != 15u) {
+                                                  cpu.r[d.rd] = val;
+                                              }
+                                          } break;
+                        case MM_OP_STL: {
+                                              mm_u32 addr = cpu.r[d.rn];
+                                              mm_u32 val = cpu.r[d.rd];
+                                              if ((addr & ((mm_u32)d.ra - 1u)) != 0u) {
+                                                  if (!raise_usage_fault(&cpu, &map, &scs, f.pc_fetch, cpu.xpsr, UFSR_UNALIGNED)) done = MM_TRUE;
+                                                  return MM_EXEC_CONTINUE;
+                                              }
+                                              if (d.ra == 1u) {
+                                                  val &= 0xffu;
+                                              } else if (d.ra == 2u) {
+                                                  val &= 0xffffu;
+                                              }
+                                              if (!mm_memmap_write(&map, cpu.sec_state, addr, d.ra, val)) {
+                                                  if (!raise_mem_fault(&cpu, &map, &scs, f.pc_fetch, cpu.xpsr, addr, MM_FALSE)) done = MM_TRUE;
+                                                  return MM_EXEC_CONTINUE;
+                                              }
+                                          } break;
                         case MM_OP_CLREX: {
                                               mm_cpu_excl_clear(&cpu);
                                           } break;
