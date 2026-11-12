@@ -56,6 +56,9 @@
 #include "stm32wba55/stm32wba55_mmio.h"
 #include "stm32wba55/stm32wba55_usart.h"
 #include "stm32wba55/cpu_config.h"
+#include "stm32u385/stm32u385_mmio.h"
+#include "stm32u385/stm32u385_usart.h"
+#include "stm32u385/cpu_config.h"
 #include "mcxw71c/mcxw71c_mmio.h"
 #include "mcxw71c/mcxw71c_timers.h"
 #include "mcxw71c/mcxw71c_usart.h"
@@ -372,6 +375,52 @@ static const struct mm_cpu_entry cpu_table[] = {
             STM32WBA55_USART_INIT,
             STM32WBA55_USART_RESET,
             STM32WBA55_USART_POLL,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
+        "stm32u385",
+        {
+            STM32U385_FLASH_BASE_S,
+            STM32U385_FLASH_SIZE,
+            STM32U385_FLASH_BASE_NS,
+            STM32U385_FLASH_SIZE,
+            0,
+            0,
+            STM32U385_RAM_BASE_S,
+            STM32U385_RAM_SIZE,
+            STM32U385_RAM_BASE_NS,
+            STM32U385_RAM_SIZE,
+            1,
+            STM32U385_RAM_REGIONS,
+            STM32U385_RAM_REGION_COUNT,
+            0,
+            0,
+            STM32U385_FLAGS,
+            STM32U385_SOC_RESET,
+            STM32U385_SOC_REGISTER,
+            STM32U385_FLASH_BIND,
+            STM32U385_CLOCK_GET_HZ,
+            STM32U385_USART_INIT,
+            STM32U385_USART_RESET,
+            STM32U385_USART_POLL,
             0,
             0,
             0,

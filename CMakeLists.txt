@@ -678,6 +678,7 @@ add_custom_target(firmware-build
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32u585 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32l552 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32wba55 app.bin
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-stm32u385 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxw app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxw-flash app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxn947 app.bin
@@ -792,6 +793,7 @@ add_custom_target(test-firmware
   COMMAND /bin/sh -c "$<TARGET_FILE:m33mu> --cpu stm32u585 tests/firmware/test-stm32u585-dualbank/app.bin --dualbank || true"
   COMMAND /bin/sh -c "$<TARGET_FILE:m33mu> --cpu stm32u585 tests/firmware/test-stm32u585-swap-reset/app.bin tests/firmware/test-stm32u585-swap-reset/app.bin:0x100000 --dualbank || true"
   COMMAND $<TARGET_FILE:m33mu> --cpu stm32wba55 --no-tz tests/firmware/test-stm32wba55/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  COMMAND $<TARGET_FILE:m33mu> --cpu stm32u385 --no-tz tests/firmware/test-stm32u385/app.bin --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
   COMMAND /bin/sh -c "$<TARGET_FILE:m33mu> tests/firmware/test-rtos-exceptions/app.bin || true"
   COMMAND /bin/sh -c "$<TARGET_FILE:m33mu> tests/firmware/test-tz-bxns-cmse-sau-mpu/build/secure.bin tests/firmware/test-tz-bxns-cmse-sau-mpu/build/nonsecure.bin:0x2000 || true"
   COMMAND /bin/sh -c "$<TARGET_FILE:m33mu> --cpu pic32ck tests/firmware/test-pic32ck-sdk/test_fcw.bin || true"

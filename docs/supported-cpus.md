@@ -8,6 +8,7 @@ These values are accepted by `--cpu`:
 - `stm32u585`
 - `stm32l552`
 - `stm32wba55` — STM32WBA55CG (Cortex-M33, TrustZone, 1 MB single-bank flash)
+- `stm32u385` — STM32U385RG (Cortex-M33, TrustZone, 1 MB dual-bank flash, 4 KB pages)
 - `lpc55s69`
 - `mcxw71c` — NXP MCX W71 / MCXW716C (Cortex-M33, TrustZone, FMU0 flash)
 - `mcxn947`
@@ -126,6 +127,19 @@ These values are accepted by `--cpu`:
   fill one word (`NSSR.WDW` while it is incomplete), a store to another word first is
   `PGSERR` and loses both. A word that is not erased takes only all-zero data; anything
   else is `PROGERR` with nothing written (RM0493 7.3.7). `NSCR1` is read-only while
+
+### STM32U385 notes
+
+- **Modelled:** RCC at `0x40030C00` (MSIS/MSIK/HSI/HSE ready bits, MSIS range from
+  `ICSCR1`, SYSCLK selection), PWR at `0x40030800` (`CR3.REGSEL` -> `SVMSR.REGS`,
+  `VOSR` range and booster ready bits), the flash controller, ICACHE, GPIO A-E/G/H,
+  USART1/USART3/UART4/UART5/LPUART1. Secure aliases at `+0x10000000`; no GTZC, RNG or
+  crypto.
+- **Flash.** Two banks of 128 pages of 4 KB programmed by 64-bit double words: stores
+  with `PG` set fill one double word (`NSSR.WDW` while it is incomplete), a store to
+  another word first is `PGSERR` and loses both. A double word that is not erased takes
+  only all-zero data; anything else is `PROGERR` with nothing written (RM0487 7.3.7).
+  `PNB` and `MER1`/`MER2` address the bank `BKER` selects. `NSCR` is read-only while
   `LOCK` is set; `OPTKEYR` unlocks `OPTLOCK`, `OBL_LAUNCH` resets the device.
 
 ### i.MX RT700 notes
