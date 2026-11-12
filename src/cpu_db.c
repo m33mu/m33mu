@@ -104,6 +104,8 @@
 #include "rw612/rw612_flexcomm.h"
 #include "rw612/rw612_timers.h"
 #include "rw612/cpu_config.h"
+#include "psc3m6/psc3m6_mmio.h"
+#include "psc3m6/cpu_config.h"
 
 struct mm_cpu_entry {
     const char *name;
@@ -977,6 +979,52 @@ static const struct mm_cpu_entry cpu_table[] = {
             0,
             IMXRT700_MC_OPS,
             IMXRT700_BOOT_RESOLVE,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
+        "psc3m6",
+        {
+            PSC3M6_FLASH_BASE_S,
+            PSC3M6_FLASH_SIZE,
+            PSC3M6_FLASH_BASE_NS,
+            PSC3M6_FLASH_SIZE,
+            PSC3M6_FLASH_BASE_S2,
+            PSC3M6_FLASH_SIZE,
+            PSC3M6_RAM_BASE_S,
+            PSC3M6_RAM_SIZE,
+            PSC3M6_RAM_BASE_NS,
+            PSC3M6_RAM_SIZE,
+            1,
+            PSC3M6_RAM_REGIONS,
+            PSC3M6_RAM_REGION_COUNT,
+            PSC3M6_MPCBB_BLOCK_SIZE,
+            0,
+            PSC3M6_FLAGS,
+            PSC3M6_SOC_RESET,
+            PSC3M6_SOC_REGISTER,
+            PSC3M6_FLASH_BIND,
+            PSC3M6_CLOCK_GET_HZ,
+            PSC3M6_USART_INIT,
+            PSC3M6_USART_RESET,
+            PSC3M6_USART_POLL,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
             0,
             0,
             0,

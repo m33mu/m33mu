@@ -50,6 +50,8 @@
 #include "lpc55s69/lpc55s69_romapi.h"
 #include "rw612/rw612_romapi.h"
 #include "rw612/cpu_config.h"
+#include "psc3m6/psc3m6_romapi.h"
+#include "psc3m6/cpu_config.h"
 #include "imxrt700/imxrt700_romapi.h"
 #include "imxrt700/cpu_config.h"
 #include "mcxw71c/mcxw71c_mmio.h"
@@ -5596,6 +5598,15 @@ int main(int argc, char **argv)
                 mm_prot_add_region(&execution.protection[0], 0x03000000u, 0x00020000u, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_NONSECURE);
                 mm_prot_add_region(&execution.protection[0], 0x13000000u, 0x00020000u, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_SECURE);
                 mm_prot_add_region(&execution.protection[0], 0x13000000u, 0x00020000u, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_NONSECURE);
+            }
+            if (cpu_name != 0 && strcmp(cpu_name, "psc3m6") == 0) {
+                /* Boot ROM (both aliases) and the Secure SBUS flash view the
+                 * boot ROM flash API takes its addresses in. */
+                mm_prot_add_region(&execution.protection[0], PSC3M6_ROM_BASE_S, PSC3M6_ROM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_SECURE);
+                mm_prot_add_region(&execution.protection[0], PSC3M6_ROM_BASE_S, PSC3M6_ROM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_NONSECURE);
+                mm_prot_add_region(&execution.protection[0], PSC3M6_ROM_BASE_NS, PSC3M6_ROM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_SECURE);
+                mm_prot_add_region(&execution.protection[0], PSC3M6_ROM_BASE_NS, PSC3M6_ROM_SIZE, MM_PROT_PERM_READ | MM_PROT_PERM_EXEC, MM_NONSECURE);
+                mm_prot_add_region(&execution.protection[0], PSC3M6_FLASH_BASE_S2, PSC3M6_FLASH_SIZE, MM_PROT_PERM_READ, MM_SECURE);
             }
             if (cpu_name != 0 && strcmp(cpu_name, "rw612") == 0) {
                 add_rw612_prot_regions(&execution.protection[0], &execution.target);

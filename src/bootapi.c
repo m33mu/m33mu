@@ -23,6 +23,7 @@
 #include "m33mu/bootapi.h"
 #include "mcxn947/mcxn947_romapi.h"
 #include "mcxa153/mcxa153_romapi.h"
+#include "psc3m6/psc3m6_romapi.h"
 #include "lpc55s69/lpc55s69_romapi.h"
 #include "rw612/rw612_romapi.h"
 #include "imxrt700/imxrt700_romapi.h"
@@ -38,6 +39,9 @@ mm_bool mm_target_bootapi_handle(struct mm_cpu *cpu, struct mm_memmap *map)
         return MM_TRUE;
     }
     if (mm_mcxa153_romapi_handle(cpu, map)) {
+        return MM_TRUE;
+    }
+    if (mm_psc3m6_romapi_handle(cpu, map)) {
         return MM_TRUE;
     }
     if (mm_lpc55s69_romapi_handle(cpu, map)) {

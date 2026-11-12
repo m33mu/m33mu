@@ -17,6 +17,7 @@ These values are accepted by `--cpu`:
 - `nrf5340net` — Nordic nRF5340 network core (Cortex-M33 without TrustZone, DSP or FPU; flash at 0x01000000, 2 KB NVMC pages)
 - `nrf54l15` — Nordic nRF54L15 (Cortex-M33, TrustZone through SPU / MPC)
 - `nrf54lm20` — Nordic nRF54LM20A (Cortex-M33, TrustZone through SPU / MPC)
+- `psc3m6` — Infineon PSOC Control C3M6 (Cortex-M33, boot ROM flash API)
 - `rp2350` — Raspberry Pi RP2350 (dual Cortex-M33, three PIO blocks)
 - `pic32ck`
 - `m2354` — Nuvoton NuMicro M2354 (Cortex-M23, ARMv8-M Baseline)
@@ -85,6 +86,35 @@ These values are accepted by `--cpu`:
 - **Peripherals.** CLKCTL/RSTCTL, FlexComm USART/SPI (clock and reset on `CLKCTL1` /
   `RSTCTL1` like the SDK), CACHE64 (commands complete at once), FlexSPI controller
   registers, SOCCTRL, GPIO, CTIMER/MRT, ELS and PKA.
+
+### PSOC Control C3M6 notes
+
+- **Aliases.** Flash and SRAM are visible through the code bus and the system
+  bus, each Secure and Non-secure: flash at `0x02000000` / `0x12000000` (CBUS) and
+  `0x22000000` / `0x32000000` (SBUS), SRAM at `0x24000000` / `0x34000000` (SBUS) and
+  `0x04000000` / `0x14000000` (CBUS), boot ROM at `0x00800000` / `0x10800000`. The
+  Non-secure SBUS flash view is accepted by the flash API but not mapped for reads.
+- **Always Secure.** The boot ROM starts the application Secure, so an image linked
+  at the Secure aliases keeps running there under `--no-tz`.
+- **Flash.** Programmed only through the boot ROM API table at `0x1080FF6C`
+  (`cyboot_flash_list.h`): `erase_row` (row to 0x00), `program_row` (sets bits) and
+  `write_row` (erase then program) on 512-byte rows addressed through the SBUS alias;
+  the CBUS address is refused. The other entries return `CYBOOT_FLASH_FAILED`; CPU
+  stores into the flash bus-fault. Rows are written back with `--persist`.
+- **Clocks.** `PERI_PCLK` dividers start only through `DIV_CMD`; `CLOCK_CTL` resets
+  disconnected (`0x3FF`) and an SCB bus-faults until the entry of its destination
+  (group 4, index `2 * n`; SCB5 group 6 index 0) selects a started divider. `PERI`
+  groups 1 and up reset with `SL_CTL` clear: HSIOM and GPIO (group 1), SCB0-4
+  (group 3) and SCB5 (group 5) bus-fault until their slave bit is set.
+- **Pins.** 14 ports. `HSIOM.SECURE_PRT[p].NONSECURE_MASK` starts all ones and splits
+  each port between the aliases: a pin's HSIOM and GPIO fields are visible through
+  the Secure alias when its bit is clear and through the Non-secure alias when it is
+  set; the other alias drops writes and reads zero. GPIO `IN` reads back the output
+  latch.
+- **SCB.** SCB0..SCB5 in UART mode (TX/RX FIFO, a PTY per instance, SCB3 first so
+  `--uart-stdout` is the kit console) and SPI master mode on `--spiflash:SPIn`, with
+  the select released after each frame unless `SPI_CTRL.SSEL_CONTINUOUS` is set.
+  I2C mode, interrupts and a chip select driven from a GPIO are not modelled.
 
 ### i.MX RT700 notes
 
