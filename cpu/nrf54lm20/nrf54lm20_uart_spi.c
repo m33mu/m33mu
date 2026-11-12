@@ -29,7 +29,8 @@ static const struct nrf_serial_config g_cfg = {
     MM_FALSE,
     MM_TRUE,
     MM_TRUE,
-    MM_TRUE
+    MM_TRUE,
+    MM_FALSE
 };
 
 void mm_nrf54lm20_usart_init(struct mmio_bus *bus, struct mm_nvic *nvic)

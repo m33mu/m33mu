@@ -66,6 +66,9 @@
 #include "nrf5340/nrf5340_timers.h"
 #include "nrf5340/nrf5340_uart_spi.h"
 #include "nrf5340/cpu_config.h"
+#include "nrf5340net/nrf5340net_timers.h"
+#include "nrf5340net/nrf5340net_uart_spi.h"
+#include "nrf5340net/cpu_config.h"
 #include "nrf54lm20/nrf54lm20_mmio.h"
 #include "nrf54lm20/nrf54lm20_timers.h"
 #include "nrf54lm20/nrf54lm20_uart_spi.h"
@@ -458,6 +461,52 @@ static const struct mm_cpu_entry cpu_table[] = {
             NRF5340_TIMER_INIT,
             NRF5340_TIMER_RESET,
             NRF5340_TIMER_TICK,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        }
+    },
+    {
+        "nrf5340net",
+        {
+            NRF5340NET_FLASH_BASE_S,
+            NRF5340NET_FLASH_SIZE,
+            NRF5340NET_FLASH_BASE_NS,
+            NRF5340NET_FLASH_SIZE,
+            0,
+            0,
+            NRF5340NET_RAM_BASE_S,
+            NRF5340NET_RAM_SIZE,
+            NRF5340NET_RAM_BASE_NS,
+            NRF5340NET_RAM_SIZE,
+            1,
+            NRF5340NET_RAM_REGIONS,
+            NRF5340NET_RAM_REGION_COUNT,
+            NRF5340NET_MPCBB_BLOCK_SIZE,
+            0,
+            NRF5340NET_FLAGS,
+            NRF5340NET_SOC_RESET,
+            NRF5340NET_SOC_REGISTER,
+            NRF5340NET_FLASH_BIND,
+            NRF5340NET_CLOCK_GET_HZ,
+            NRF5340NET_USART_INIT,
+            NRF5340NET_USART_RESET,
+            NRF5340NET_USART_POLL,
+            NRF5340NET_SPI_INIT,
+            NRF5340NET_SPI_RESET,
+            NRF5340NET_SPI_POLL,
+            0,
+            0,
+            0,
+            NRF5340NET_TIMER_INIT,
+            NRF5340NET_TIMER_RESET,
+            NRF5340NET_TIMER_TICK,
             0,
             0,
             0,

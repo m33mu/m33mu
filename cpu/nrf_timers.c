@@ -127,6 +127,7 @@ void nrf_timers_register(struct nrf_timers_state *state,
         reg.base = bases_ns[i];
         reg.opaque = &state->timers[i];
         if (!mmio_bus_register_region(bus, &reg)) return;
+        if (bases_s[i] == bases_ns[i]) continue;
         reg.base = bases_s[i];
         if (!mmio_bus_register_region(bus, &reg)) return;
     }

@@ -680,6 +680,7 @@ add_custom_target(firmware-build
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxw app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-mcxn947 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-nrf5340 app.bin
+  COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-nrf5340net app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-nrf54lm20 app.bin
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-pic32ck all
   COMMAND ${CMAKE_MAKE_PROGRAM} -C tests/firmware/test-pic32ck-sdk clean all
@@ -798,6 +799,8 @@ add_custom_target(test-firmware
   COMMAND $<TARGET_FILE:m33mu> --cpu imxrt700 --expect-bkpt 0x7f tests/firmware/test-imxrt700/app-ramload.bin
           --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
   COMMAND $<TARGET_FILE:m33mu> --cpu rp2350 tests/firmware/test-rp2350-pio/app.bin
+          --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
+  COMMAND $<TARGET_FILE:m33mu> --cpu nrf5340net tests/firmware/test-nrf5340net/app.bin
           --expect-bkpt 0x7f --timeout 60 --uart-stdout --quit-on-faults
   DEPENDS m33mu firmware-build
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"

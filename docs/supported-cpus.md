@@ -12,6 +12,7 @@ These values are accepted by `--cpu`:
 - `mcxn947`
 - `rw612` — NXP RW612 (Cortex-M33 + ELS / PKA crypto offload)
 - `nrf5340`
+- `nrf5340net` — Nordic nRF5340 network core (Cortex-M33 without TrustZone, DSP or FPU; flash at 0x01000000, 2 KB NVMC pages)
 - `nrf54lm20`
 - `rp2350` — Raspberry Pi RP2350 (dual Cortex-M33, three PIO blocks)
 - `pic32ck`

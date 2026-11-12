@@ -5590,6 +5590,11 @@ int main(int argc, char **argv)
                 /* FICR, Secure read-only */
                 mm_prot_add_region(&execution.protection[0], 0x00FF0000u, 0x00001000u, MM_PROT_PERM_READ, MM_SECURE);
             }
+            if (cpu_name != 0 && strcmp(cpu_name, "nrf5340net") == 0) {
+                /* network core FICR, read-only, no TrustZone */
+                mm_prot_add_region(&execution.protection[0], 0x01FF0000u, 0x00001000u, MM_PROT_PERM_READ, MM_SECURE);
+                mm_prot_add_region(&execution.protection[0], 0x01FF0000u, 0x00001000u, MM_PROT_PERM_READ, MM_NONSECURE);
+            }
             if (cpu_name != 0 && strcmp(cpu_name, "imxrt700") == 0) {
                 add_imxrt700_prot_regions(&execution.protection[0], &execution.target);
             }

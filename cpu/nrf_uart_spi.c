@@ -323,6 +323,7 @@ void nrf_serial_register_all(struct nrf_serial_state *state,
         reg.base = cfg->bases[i];
         reg.opaque = s;
         if (!mmio_bus_register_region(bus, &reg)) return;
+        if (cfg->single_view) continue;
         reg.base = cfg->bases[i] + 0x10000000u;
         if (!mmio_bus_register_region(bus, &reg)) return;
     }

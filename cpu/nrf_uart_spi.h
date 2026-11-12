@@ -23,6 +23,8 @@ struct nrf_serial_config {
     mm_bool starttx_sets_txdrdy;
     mm_bool endtx_only_when_nonzero;
     mm_bool explicit_event_window;
+    /* One address per instance: no base + 0x10000000 alias (nRF5340 net) */
+    mm_bool single_view;
 };
 
 struct nrf_serial_inst {

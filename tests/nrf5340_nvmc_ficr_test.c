@@ -19,8 +19,9 @@
  *
  */
 
-/* nRF5340 NVMC page erase (CONFIG.WEN=Een, write 0xFFFFFFFF to the page) and
- * the FICR block the wolfBoot HAL reads for the CryptoCell TRNG setup. */
+/* nRF5340 NVMC page erase (CONFIG.WEN=Een, write 0xFFFFFFFF to the page), the
+ * FICR block the wolfBoot HAL reads for the CryptoCell TRNG setup, and the
+ * network core NVMC with its single view and 2 KB pages. */
 
 #include <stdio.h>
 #include <string.h>
@@ -186,11 +187,126 @@ static int test_ficr(void)
     return 0;
 }
 
+/* Network core: flash at 0x01000000 with one view, 2 KB pages, CONFIG only */
+#define NET_BASE       0x01000000u
+#define NET_NVMC_BASE  0x41080000u
+#define NET_PAGE       0x800u
+#define NET_FICR_BASE  0x01FF0000u
+
+static void init_net_map(struct mm_memmap *map, struct mmio_region *regions, size_t cap)
+{
+    struct mm_target_cfg cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.flash_base_s = NET_BASE;
+    cfg.flash_size_s = FLASH_SIZE;
+    cfg.flash_base_ns = NET_BASE;
+    cfg.flash_size_ns = FLASH_SIZE;
+    mm_memmap_init(map, regions, cap);
+    (void)mm_memmap_configure_flash(map, &cfg, flash, MM_TRUE);
+    map->flash_base_s = NET_BASE;
+    map->flash_size_s = FLASH_SIZE;
+    map->flash_base_ns = NET_BASE;
+    map->flash_size_ns = FLASH_SIZE;
+    /* production order: the SoC reset runs before MMIO registration */
+    mm_nrf5340net_mmio_reset();
+    (void)mm_nrf5340net_register_mmio(&map->mmio);
+    mm_nrf5340_flash_bind(map, flash, FLASH_SIZE, 0, 0u);
+}
+
+static int net_page_is(mm_u32 off, mm_u8 val)
+{
+    mm_u32 i;
+    for (i = 0; i < NET_PAGE; ++i) {
+        if (flash[off + i] != val) return 0;
+    }
+    return 1;
+}
+
+static int test_net_core_nvmc(void)
+{
+    struct mm_memmap map;
+    struct mmio_region regions[64];
+    mm_u32 v = 0;
+
+    memset(flash, 0x00, sizeof(flash));
+    init_net_map(&map, regions, 64u);
+    mmio_set_active_sec(MM_NONSECURE);
+
+    /* the network core has no CONFIGNS: CONFIG governs the single view, and
+     * the core runs without TrustZone, so a Non-secure store counts */
+    if (mm_memmap_write(&map, MM_NONSECURE, NET_BASE + NET_PAGE, 4u, 0xFFFFFFFFu)) {
+        fprintf(stderr, "net: erase accepted with CONFIG=Ren\n");
+        return 1;
+    }
+    if (!mmio_bus_write(&map.mmio, NET_NVMC_BASE + NVMC_CONFIG, 4u, CONFIG_EEN)) return 1;
+    if (!mm_memmap_write(&map, MM_NONSECURE, NET_BASE + NET_PAGE, 4u, 0xFFFFFFFFu)) {
+        fprintf(stderr, "net: page erase rejected\n");
+        return 1;
+    }
+    if (!net_page_is(NET_PAGE, 0xFFu) || !net_page_is(0u, 0x00u) || !net_page_is(2u * NET_PAGE, 0x00u)) {
+        fprintf(stderr, "net: erase is not one 2 KB page\n");
+        return 1;
+    }
+    /* 0x1000 is a page start on the application core only */
+    if (!mm_memmap_write(&map, MM_NONSECURE, NET_BASE + 0x1000u, 4u, 0xFFFFFFFFu) ||
+        !net_page_is(0x1000u, 0xFFu) || !net_page_is(0x1800u, 0x00u)) {
+        fprintf(stderr, "net: second page erase\n");
+        return 1;
+    }
+    if (mm_memmap_write(&map, MM_NONSECURE, NET_BASE + 0x1004u, 4u, 0xFFFFFFFFu)) {
+        fprintf(stderr, "net: interior-word write erased\n");
+        return 1;
+    }
+    if (!mmio_bus_write(&map.mmio, NET_NVMC_BASE + NVMC_CONFIG, 4u, CONFIG_WEN)) return 1;
+    if (!mm_memmap_write(&map, MM_NONSECURE, NET_BASE + NET_PAGE + 8u, 4u, 0x12345678u) ||
+        flash[NET_PAGE + 8u] != 0x78u || flash[NET_PAGE + 11u] != 0x12u) {
+        fprintf(stderr, "net: program failed\n");
+        return 1;
+    }
+    if (!mm_memmap_write(&map, MM_SECURE, NET_BASE + NET_PAGE + 8u, 4u, 0x0F0F0F0Fu) ||
+        flash[NET_PAGE + 8u] != 0x08u) {
+        fprintf(stderr, "net: program did not clear bits only\n");
+        return 1;
+    }
+    if (!mmio_bus_read(&map.mmio, NET_NVMC_BASE + 0x400u, 4u, &v) || v != 1u) {
+        fprintf(stderr, "net: READY\n");
+        return 1;
+    }
+    /* FICR describes the network core: 64 KB RAM, 256 KB flash of 2 KB pages */
+    if (!mm_memmap_read(&map, MM_NONSECURE, NET_FICR_BASE + 0x218u, 4u, &v) || v != 0x40u ||
+        !mm_memmap_read(&map, MM_NONSECURE, NET_FICR_BASE + 0x220u, 4u, &v) || v != 0x800u) {
+        fprintf(stderr, "net: FICR geometry after reset-then-register\n");
+        return 1;
+    }
+    /* the application core bases are not present on the network core */
+    if (mmio_bus_read(&map.mmio, NVMC_BASE_NS + 0x400u, 4u, &v)) {
+        fprintf(stderr, "net: application core NVMC alias present\n");
+        return 1;
+    }
+    if (mm_nrf5340_cpu_hz() != 64000000ull) {
+        fprintf(stderr, "net: cpu_hz\n");
+        return 1;
+    }
+    /* network FICR: 256 KB flash in 2 KB pages, 64 KB RAM, readable without TrustZone */
+    if (!mm_memmap_read(&map, MM_NONSECURE, 0x01FF0000u + 0x220u, 4u, &v) || v != 0x800u ||
+        !mm_memmap_read(&map, MM_NONSECURE, 0x01FF0000u + 0x224u, 4u, &v) || v != 0x80u ||
+        !mm_memmap_read(&map, MM_NONSECURE, 0x01FF0000u + 0x218u, 4u, &v) || v != 0x40u) {
+        fprintf(stderr, "net: FICR geometry\n");
+        return 1;
+    }
+    if (mm_memmap_read(&map, MM_NONSECURE, FICR_BASE + 0x220u, 4u, &v)) {
+        fprintf(stderr, "net: application FICR present\n");
+        return 1;
+    }
+    return 0;
+}
+
 int main(void)
 {
     int fails = 0;
     fails += test_een_page_erase();
     fails += test_ficr();
+    fails += test_net_core_nvmc();
     if (fails != 0) {
         printf("nrf5340_nvmc_ficr_test: FAIL (%d)\n", fails);
         return 1;

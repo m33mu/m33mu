@@ -149,6 +149,60 @@ extern void mm_system_request_reset(void);
 #define CC312_ENGINE_BASE_S 0x50845000u
 #define CC312_ENGINE_SIZE   0x2000u
 
+/* Peripheral bases of the two Cortex-M33 cores. The application core has
+ * Secure and Non-secure aliases; the network core has no TrustZone and one
+ * address per block, with 2 KB NVMC pages and no QSPI, SPU or CryptoCell. */
+struct nrf5340_core_map {
+    mm_u32 clock_ns;
+    mm_u32 clock_s;
+    mm_u32 rtc0_ns;
+    mm_u32 rtc0_s;
+    mm_u32 ctrlap_ns;
+    mm_u32 ctrlap_s;
+    mm_u32 ipc_ns;
+    mm_u32 ipc_s;
+    mm_u32 gpio_p0_ns;
+    mm_u32 gpio_p0_s;
+    mm_u32 gpio_p1_ns;
+    mm_u32 gpio_p1_s;
+    mm_u32 nvmc_ns;
+    mm_u32 nvmc_s;
+    mm_u32 nvmc_page_size;
+    mm_u64 cpu_hz;
+    mm_u32 ficr_base;
+    mm_bool app;
+};
+
+static const struct nrf5340_core_map nrf5340_app_map = {
+    CLOCK_BASE_NS, CLOCK_BASE_S,
+    RTC0_BASE_NS, RTC0_BASE_S,
+    CTRLAP_BASE_NS, CTRLAP_BASE_S,
+    IPC_BASE_NS, IPC_BASE_S,
+    GPIO_P0_BASE_NS, GPIO_P0_BASE_S,
+    GPIO_P1_BASE_NS, GPIO_P1_BASE_S,
+    NVMC_BASE_NS, NVMC_BASE_S,
+    0x1000u,
+    128000000ull,
+    FICR_BASE,
+    MM_TRUE
+};
+
+static const struct nrf5340_core_map nrf5340_net_map = {
+    0x41005000u, 0x41005000u,
+    0x41011000u, 0x41011000u,
+    0x41006000u, 0x41006000u,
+    0x41012000u, 0x41012000u,
+    0x418C0500u, 0x418C0500u,
+    0x418C0800u, 0x418C0800u,
+    0x41080000u, 0x41080000u,
+    0x800u,
+    64000000ull,
+    0x01FF0000u,
+    MM_FALSE
+};
+
+static const struct nrf5340_core_map *active_core = &nrf5340_app_map;
+
 struct clock_state {
     mm_u32 regs[CLOCK_SIZE / 4];
     mm_bool hfclk_on;
@@ -184,6 +238,7 @@ struct nvmc_state {
     mm_u32 flags;
     mm_u32 base_s;
     mm_u32 base_ns;
+    mm_u32 page_size;
 };
 
 struct rng_state {
@@ -802,20 +857,27 @@ static mm_bool nvmc_write_cb(void *opaque,
     if (nvmc == 0 || nvmc->flash == 0) return MM_FALSE;
 
     /* CONFIG governs the Secure flash view, CONFIGNS the Non-secure one;
-     * Non-secure code never reaches the Secure view. */
-    target_secure = (addr >= nvmc->base_s) ? MM_TRUE : MM_FALSE;
-    if (target_secure && sec != MM_SECURE) {
-        return MM_FALSE;
-    }
-    if (target_secure) {
+     * Non-secure code never reaches the Secure view. The network core has
+     * one view and no TrustZone: CONFIG alone applies. */
+    if (nvmc->base_s == nvmc->base_ns) {
+        target_secure = MM_FALSE;
         wen = nvmc->regs[NVMC_CONFIG / 4] & 0x7u;
     } else {
-        wen = nvmc->regs[NVMC_CONFIGNS / 4] & 0x3u;
+        target_secure = (addr >= nvmc->base_s) ? MM_TRUE : MM_FALSE;
+        if (target_secure && sec != MM_SECURE) {
+            return MM_FALSE;
+        }
+        if (target_secure) {
+            wen = nvmc->regs[NVMC_CONFIG / 4] & 0x7u;
+        } else {
+            wen = nvmc->regs[NVMC_CONFIGNS / 4] & 0x3u;
+        }
     }
     /* nRF53 has no ERASEPAGE: with WEN=Een, writing 0xFFFFFFFF to the first
      * word of a page erases that page. */
     if (wen == 0x2u) {
-        if (size_bytes != 4u || value != 0xFFFFFFFFu || (addr & 0xFFFu) != 0u) {
+        if (size_bytes != 4u || value != 0xFFFFFFFFu ||
+            (addr & (nvmc->page_size - 1u)) != 0u) {
             return MM_FALSE;
         }
         nvmc_erase_page(nvmc, addr);
@@ -874,8 +936,9 @@ static void nvmc_erase_page(struct nvmc_state *nvmc, mm_u32 addr)
     mm_u32 base;
     mm_u32 offset;
     mm_u32 page_base;
-    mm_u32 page_size = 0x1000u;
+    mm_u32 page_size;
     if (nvmc == 0 || nvmc->flash == 0) return;
+    page_size = (nvmc->page_size != 0u) ? nvmc->page_size : 0x1000u;
     base = (addr >= nvmc->base_s) ? nvmc->base_s : nvmc->base_ns;
     if (addr < base) return;
     offset = addr - base;
@@ -893,8 +956,9 @@ static void nvmc_erase_page(struct nvmc_state *nvmc, mm_u32 addr)
 static mm_bool ficr_read(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 *value_out)
 {
     (void)opaque;
-    /* FICR is always Secure (SPU): Non-secure reads fault. */
-    if (mmio_active_sec() != MM_SECURE) return MM_FALSE;
+    /* The application core FICR is always Secure (SPU): Non-secure reads
+     * fault. The network core has no TrustZone. */
+    if (active_core->app && mmio_active_sec() != MM_SECURE) return MM_FALSE;
     if (value_out == 0 || size_bytes == 0 || size_bytes > 4) return MM_FALSE;
     if ((offset + size_bytes) > FICR_SIZE) return MM_FALSE;
     *value_out = read_slice(ficr_regs[offset / 4], offset & 3u, size_bytes);
@@ -1037,10 +1101,20 @@ static mm_bool spu_write(void *opaque, mm_u32 offset, mm_u32 size_bytes, mm_u32 
     return MM_TRUE;
 }
 
-mm_bool mm_nrf5340_register_mmio(struct mmio_bus *bus)
+static mm_bool register_pair(struct mmio_bus *bus, struct mmio_region *reg, mm_u32 base_ns, mm_u32 base_s)
+{
+    reg->base = base_ns;
+    if (!mmio_bus_register_region(bus, reg)) return MM_FALSE;
+    if (base_s == base_ns) return MM_TRUE;
+    reg->base = base_s;
+    return mmio_bus_register_region(bus, reg);
+}
+
+static mm_bool nrf5340_register_core(struct mmio_bus *bus, const struct nrf5340_core_map *core)
 {
     struct mmio_region reg;
-    if (bus == 0) return MM_FALSE;
+    if (bus == 0 || core == 0) return MM_FALSE;
+    active_core = core;
     memset(&reg, 0, sizeof(reg));
 
     memset(&clock_state, 0, sizeof(clock_state));
@@ -1060,81 +1134,69 @@ mm_bool mm_nrf5340_register_mmio(struct mmio_bus *bus)
     memset(&rng_state, 0, sizeof(rng_state));
     memset(&spu_state, 0, sizeof(spu_state));
 
-    reg.base = CLOCK_BASE_NS;
     reg.size = CLOCK_SIZE;
     reg.opaque = &clock_state;
     reg.read = clock_read;
     reg.write = clock_write;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
-    reg.base = CLOCK_BASE_S;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+    if (!register_pair(bus, &reg, core->clock_ns, core->clock_s)) return MM_FALSE;
 
-    reg.base = RTC0_BASE_NS;
     reg.size = RTC_SIZE;
     reg.opaque = &rtc0_state;
     reg.read = rtc_read;
     reg.write = rtc_write;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
-    reg.base = RTC0_BASE_S;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+    if (!register_pair(bus, &reg, core->rtc0_ns, core->rtc0_s)) return MM_FALSE;
 
-    reg.base = CTRLAP_BASE_NS;
     reg.size = CTRLAP_SIZE;
     reg.opaque = &ctrlap_state;
     reg.read = ctrlap_read;
     reg.write = ctrlap_write;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
-    reg.base = CTRLAP_BASE_S;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+    if (!register_pair(bus, &reg, core->ctrlap_ns, core->ctrlap_s)) return MM_FALSE;
 
-    reg.base = IPC_BASE_NS;
     reg.size = IPC_SIZE;
     reg.opaque = &ipc_state;
     reg.read = ipc_read;
     reg.write = ipc_write;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
-    reg.base = IPC_BASE_S;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+    if (!register_pair(bus, &reg, core->ipc_ns, core->ipc_s)) return MM_FALSE;
 
-    reg.base = QSPI_BASE_NS;
-    reg.size = QSPI_SIZE;
-    reg.opaque = &qspi_state;
-    reg.read = qspi_read;
-    reg.write = qspi_write;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
-    reg.base = QSPI_BASE_S;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+    if (core->app) {
+        reg.size = QSPI_SIZE;
+        reg.opaque = &qspi_state;
+        reg.read = qspi_read;
+        reg.write = qspi_write;
+        if (!register_pair(bus, &reg, QSPI_BASE_NS, QSPI_BASE_S)) return MM_FALSE;
+    }
 
-    reg.base = GPIO_P0_BASE_NS;
     reg.size = GPIO_SIZE;
     reg.opaque = &gpio_banks[0];
     reg.read = nrf_gpio_read;
     reg.write = nrf_gpio_write;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
-    reg.base = GPIO_P0_BASE_S;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+    if (!register_pair(bus, &reg, core->gpio_p0_ns, core->gpio_p0_s)) return MM_FALSE;
 
-    reg.base = GPIO_P1_BASE_NS;
     reg.opaque = &gpio_banks[1];
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
-    reg.base = GPIO_P1_BASE_S;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+    if (!register_pair(bus, &reg, core->gpio_p1_ns, core->gpio_p1_s)) return MM_FALSE;
 
-    reg.base = NVMC_BASE_NS;
     reg.size = NVMC_SIZE;
     reg.opaque = &nvmc_state;
     reg.read = nvmc_read;
     reg.write = nvmc_write;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
-    reg.base = NVMC_BASE_S;
-    if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+    nvmc_state.page_size = core->nvmc_page_size;
+    if (!register_pair(bus, &reg, core->nvmc_ns, core->nvmc_s)) return MM_FALSE;
 
-    reg.base = FICR_BASE;
+    mm_gpio_bank_set_reader(nrf_gpio_bank_read, 0);
+    mm_gpio_bank_set_moder_reader(nrf_gpio_bank_read_moder, 0);
+    mm_gpio_bank_set_clock_reader(nrf_gpio_bank_clock, 0);
+    mm_gpio_bank_set_seccfgr_reader(nrf_gpio_bank_read_seccfgr, 0);
+
+    reg.base = core->ficr_base;
     reg.size = FICR_SIZE;
     reg.opaque = 0;
     reg.read = ficr_read;
     reg.write = ficr_write;
     if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
+
+    if (!core->app) {
+        return MM_TRUE;
+    }
 
     /* Note: RNG_BASE_NS/S (0x40845000/0x50845000) is the CC-312 engine base.
      * The real nRF5340 does not have a standalone RNG at this address —
@@ -1177,12 +1239,17 @@ mm_bool mm_nrf5340_register_mmio(struct mmio_bus *bus)
     reg.name  = "cc312_engine";
     if (!mmio_bus_register_region(bus, &reg)) return MM_FALSE;
 
-    mm_gpio_bank_set_reader(nrf_gpio_bank_read, 0);
-    mm_gpio_bank_set_moder_reader(nrf_gpio_bank_read_moder, 0);
-    mm_gpio_bank_set_clock_reader(nrf_gpio_bank_clock, 0);
-    mm_gpio_bank_set_seccfgr_reader(nrf_gpio_bank_read_seccfgr, 0);
-
     return MM_TRUE;
+}
+
+mm_bool mm_nrf5340_register_mmio(struct mmio_bus *bus)
+{
+    return nrf5340_register_core(bus, &nrf5340_app_map);
+}
+
+mm_bool mm_nrf5340net_register_mmio(struct mmio_bus *bus)
+{
+    return nrf5340_register_core(bus, &nrf5340_net_map);
 }
 
 void mm_nrf5340_flash_bind(struct mm_memmap *map,
@@ -1198,6 +1265,9 @@ void mm_nrf5340_flash_bind(struct mm_memmap *map,
     nvmc_state.flags = flags;
     nvmc_state.base_s = map->flash_base_s;
     nvmc_state.base_ns = map->flash_base_ns;
+    if (nvmc_state.page_size == 0u) {
+        nvmc_state.page_size = active_core->nvmc_page_size;
+    }
     mm_memmap_set_flash_writer(map, nvmc_write_cb, &nvmc_state);
 
     /* Wire memmap into CryptoCell-312 so DMA can read/write target RAM */
@@ -1215,10 +1285,26 @@ void mm_nrf5340_set_nvic(struct mm_nvic *nvic)
 
 mm_u64 mm_nrf5340_cpu_hz(void)
 {
-    return 128000000ull;
+    return active_core->cpu_hz;
+}
+
+static void nrf5340_core_reset(void);
+
+/* The reset runs before the MMIO registration that would otherwise pick the
+ * core, so each variant selects its map here. */
+void mm_nrf5340net_mmio_reset(void)
+{
+    active_core = &nrf5340_net_map;
+    nrf5340_core_reset();
 }
 
 void mm_nrf5340_mmio_reset(void)
+{
+    active_core = &nrf5340_app_map;
+    nrf5340_core_reset();
+}
+
+static void nrf5340_core_reset(void)
 {
     memset(&clock_state, 0, sizeof(clock_state));
     clock_state.hfclk_on = MM_TRUE;
@@ -1246,6 +1332,7 @@ void mm_nrf5340_mmio_reset(void)
     nvmc_state.regs[NVMC_READY / 4] = 1u;
     nvmc_state.regs[NVMC_READYNEXT / 4] = 1u;
     nvmc_state.regs[NVMC_CONFIG / 4] = 0u;
+    nvmc_state.page_size = active_core->nvmc_page_size;
 
     mm_gpio_set_external_input_writer(nrf_gpio_set_external_input_cb, 0);
 
@@ -1254,10 +1341,17 @@ void mm_nrf5340_mmio_reset(void)
     memset(ficr_regs, 0xFF, sizeof(ficr_regs));
     ficr_regs[FICR_INFO_PART / 4] = 0x00005340u;
     ficr_regs[FICR_INFO_VARIANT / 4] = 0x514B4141u; /* "QKAA" */
-    ficr_regs[FICR_INFO_RAM / 4] = 0x00000200u;
-    ficr_regs[FICR_INFO_FLASH / 4] = 0x00000400u;
-    ficr_regs[FICR_INFO_CODEPAGESIZE / 4] = 0x00001000u;
-    ficr_regs[FICR_INFO_CODESIZE / 4] = 0x00000100u;
+    if (active_core->app) {
+        ficr_regs[FICR_INFO_RAM / 4] = 0x00000200u;
+        ficr_regs[FICR_INFO_FLASH / 4] = 0x00000400u;
+        ficr_regs[FICR_INFO_CODEPAGESIZE / 4] = 0x00001000u;
+        ficr_regs[FICR_INFO_CODESIZE / 4] = 0x00000100u;
+    } else {
+        ficr_regs[FICR_INFO_RAM / 4] = 0x00000040u;
+        ficr_regs[FICR_INFO_FLASH / 4] = 0x00000100u;
+        ficr_regs[FICR_INFO_CODEPAGESIZE / 4] = 0x00000800u;
+        ficr_regs[FICR_INFO_CODESIZE / 4] = 0x00000080u;
+    }
     ficr_regs[(FICR_TRNG90B + 0x00u) / 4] = 0x00000210u; /* BYTES */
     ficr_regs[(FICR_TRNG90B + 0x04u) / 4] = 0x00000014u; /* RCCUTOFF */
     ficr_regs[(FICR_TRNG90B + 0x08u) / 4] = 0x00000196u; /* APCUTOFF */
