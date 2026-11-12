@@ -50,6 +50,14 @@ void mm_prot_init(struct mm_prot_ctx *ctx, struct mm_scs *scs, const struct mm_t
 mm_bool mm_prot_add_region(struct mm_prot_ctx *ctx, mm_u32 base, mm_u32 size, mm_u8 perms, enum mm_sec_state sec);
 mm_bool mm_prot_interceptor(void *opaque, enum mm_access_type type, enum mm_sec_state sec, mm_u32 addr, mm_u32 size_bytes);
 
+/* Optional run-time state of a block-based SRAM security controller (e.g. an
+ * AHB secure controller), applied only to targets whose mpcbb_block_secure is
+ * block_fn: active() false means it is not checking yet, and strict() true
+ * means a Secure transaction to a Non-secure block faults. Without a gate the
+ * static MM_TARGET_FLAG_MPC_NONSTRICT behaviour applies. */
+void mm_prot_set_mpcbb_gate(mm_bool (*block_fn)(int bank, mm_u32 block_index),
+                            mm_bool (*active)(void), mm_bool (*strict)(void));
+
 /* Effective SAU/IDAU attribution of an address: the security attribute a bus
  * transaction targeting it will carry. */
 enum mm_sec_state mm_prot_bus_attr_for_addr(const struct mm_prot_ctx *ctx,

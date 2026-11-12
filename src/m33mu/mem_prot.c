@@ -121,6 +121,33 @@ static const char *type_name(enum mm_access_type type)
     }
 }
 
+static mm_bool (*g_mpcbb_gate_block_fn)(int bank, mm_u32 block_index) = 0;
+static mm_bool (*g_mpcbb_active)(void) = 0;
+static mm_bool (*g_mpcbb_strict)(void) = 0;
+
+void mm_prot_set_mpcbb_gate(mm_bool (*block_fn)(int bank, mm_u32 block_index),
+                            mm_bool (*active)(void), mm_bool (*strict)(void))
+{
+    g_mpcbb_gate_block_fn = block_fn;
+    g_mpcbb_active = active;
+    g_mpcbb_strict = strict;
+}
+
+static mm_bool mpcbb_gated(const struct mm_prot_ctx *ctx)
+{
+    return (ctx != 0 && ctx->cfg != 0 && g_mpcbb_gate_block_fn != 0 &&
+            ctx->cfg->mpcbb_block_secure == g_mpcbb_gate_block_fn) ? MM_TRUE : MM_FALSE;
+}
+
+static mm_bool mpcbb_strict(const struct mm_prot_ctx *ctx)
+{
+    if (mpcbb_gated(ctx) && g_mpcbb_strict != 0) {
+        return g_mpcbb_strict();
+    }
+    return (ctx->cfg == 0 || (ctx->cfg->flags & MM_TARGET_FLAG_MPC_NONSTRICT) == 0u) ?
+        MM_TRUE : MM_FALSE;
+}
+
 static mm_bool mpcbb_attr_for_addr(const struct mm_prot_ctx *ctx,
                                    mm_u32 addr,
                                    enum mm_sau_attr *attr_out,
@@ -135,6 +162,9 @@ static mm_bool mpcbb_attr_for_addr(const struct mm_prot_ctx *ctx,
     cfg = ctx->cfg;
     if (cfg == 0 || cfg->mpcbb_block_secure == 0 || cfg->ram_regions == 0 ||
         cfg->ram_region_count == 0u || cfg->mpcbb_block_size == 0u) {
+        return MM_FALSE;
+    }
+    if (mpcbb_gated(ctx) && g_mpcbb_active != 0 && !g_mpcbb_active()) {
         return MM_FALSE;
     }
     for (i = 0; i < cfg->ram_region_count; ++i) {
@@ -527,8 +557,7 @@ mm_bool mm_prot_interceptor(void *opaque, enum mm_access_type type, enum mm_sec_
             addr_sec = (attr == MM_SAU_NONSECURE) ? MM_NONSECURE : MM_SECURE;
         }
         if (sec == MM_SECURE && mpcbb_hit && mpcbb_secure_alias &&
-            mpc_attr == MM_SAU_NONSECURE &&
-            (ctx->cfg == 0 || (ctx->cfg->flags & MM_TARGET_FLAG_MPC_NONSTRICT) == 0u)) {
+            mpc_attr == MM_SAU_NONSECURE && mpcbb_strict(ctx)) {
             memfault_reason(ctx, type, sec, addr, "mpcbb-secure-alias-ns",
                             attr, addr_sec, mpcbb_hit);
             record_memfault(ctx, sec, type, addr);
